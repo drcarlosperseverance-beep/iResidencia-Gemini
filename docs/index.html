@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#121212">
+<title>iResidencia · Gemini</title>
+<style>
+:root{color-scheme:dark;--bg:#121212;--panel:#202020;--panel2:#292929;--purple:#9584b6;--teal:#51b9b0;--muted:#acacb3;--text:#ecebed;--red:#e68c99;--amber:#e8c47c;--ui-scale:1;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:calc(16px * var(--ui-scale,1))}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);min-height:100vh}
+button,input,select,textarea{font:inherit;color:var(--text)}
+button{cursor:pointer;border:0;border-radius:.9rem;background:#303033;padding:.68rem 1rem}
+button:hover:not(:disabled){filter:brightness(1.14)}button:disabled{opacity:.45;cursor:default}
+button.primary{background:var(--purple);color:#fff;font-weight:700}
+button.teal{background:#244442;color:#8bdbd3;font-weight:650}
+button.danger{background:#492e35;color:#ffaabb}
+button.ghost{background:transparent;border:1px solid #444}
+input,select,textarea{background:#151515;border:1px solid #45454a;border-radius:.75rem;padding:.6rem .75rem;max-width:100%}
+h1,h2,h3,p{margin-top:0}.muted{color:var(--muted)}
+.top{position:sticky;top:0;z-index:20;background:#202020f5;border-bottom:1px solid #292929;padding:.75rem max(1rem,calc((100vw - 1020px)/2));display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.brand{font-size:1.4rem;font-weight:800;color:var(--purple);cursor:pointer}.brand span{color:var(--teal)}.brand small{font-size:.9rem;color:var(--text);font-weight:600}
+.top-actions{display:flex;align-items:center;gap:.35rem}
+.zoom-controls{display:flex;align-items:center;gap:3px}.zoom-controls button{padding:0;width:32px;height:32px;background:#36303f;border-radius:9px;font-size:13px;font-weight:700}
+.zoom-value{font-size:11px;min-width:32px;text-align:center;color:#cbbde3}
+.iconbtn{background:transparent;color:var(--purple);font-size:1.25rem;padding:4px 7px}
+.statusbar{max-width:1020px;margin:auto;padding:.55rem 1rem;font-size:.75rem;display:flex;justify-content:space-between;color:var(--muted)}
+.badge-ok{color:var(--teal);font-weight:600}
+main{max-width:1020px;margin:auto;padding:.6rem 1rem 6rem}
+.hero{background:linear-gradient(135deg,#8773ad,#6c5a8f);border-radius:1.35rem;padding:1.3rem 1.4rem;margin-bottom:1.1rem;color:#fff}
+.eyebrow{text-transform:uppercase;letter-spacing:1.6px;font-size:.68rem;font-weight:700;opacity:.88;margin-bottom:.3rem}
+.hero h1{font-size:1.45rem;margin-bottom:.3rem}.hero p{margin:0;line-height:1.45;font-size:.9rem;color:#f3eefc}
+.card{background:var(--panel);border-radius:1.25rem;padding:1.15rem;margin-bottom:.95rem}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.9rem}
+.cat-card{cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;transition:transform .14s}.cat-card:hover{transform:translateY(-2px)}
+.cat-banner{height:3.8rem;border-radius:.85rem;display:flex;align-items:center;justify-content:space-between;padding:0 .9rem;margin-bottom:.8rem;color:#1b1b1e;font-weight:800;font-size:1.35rem}
+.c1{background:#e9c9c9}.c2{background:#c9e1cb}.c3{background:#f0ddb8}.c4{background:#c2dcec}.c5{background:#dbc6e2}.c6{background:#eec7d6}
+.cat-foot{display:flex;justify-content:flex-end;color:var(--teal);font-size:.84rem;font-weight:650}
+.row{display:flex;align-items:center;justify-content:space-between;gap:.65rem;flex-wrap:wrap}
+.bottom{position:fixed;bottom:0;left:0;right:0;z-index:30;background:#202020fa;border-top:1px solid #333;display:flex;justify-content:center;gap:clamp(4px,3vw,2.2rem);padding:.5rem .35rem calc(.5rem + env(safe-area-inset-bottom))}
+.bottom button{background:transparent;color:var(--muted);padding:.2rem .55rem;border-radius:1rem;display:flex;flex-direction:column;align-items:center;gap:.18rem;font-size:.7rem;min-width:4.2rem}
+.bottom button span{font-size:1.2rem;line-height:1.6rem;min-width:2.8rem;border-radius:1rem}
+.bottom button.active{color:#cbb9ec;font-weight:700}.bottom button.active span{background:var(--purple);color:#fff}
+.qnav{display:flex;gap:.4rem;overflow:auto;padding:.45rem 0 .7rem}
+.qnav button{width:2.1rem;min-width:2.1rem;height:2.1rem;border-radius:50%;padding:0;border:2px solid #555;background:transparent;font-size:.78rem}
+.qnav button.selected{box-shadow:0 0 0 3px var(--purple)}.qnav button.answered{border-color:var(--purple);color:#dacbf1}.qnav button.good{border-color:var(--teal);color:var(--teal)}.qnav button.bad{border-color:var(--red);color:var(--red)}
+.question-box{background:var(--purple);color:#fff;padding:1.15rem;border-radius:1.2rem;margin-bottom:.9rem;line-height:1.48;font-size:1.05rem;white-space:pre-wrap}
+.tag{display:inline-block;background:#ffffff28;border-radius:.45rem;padding:.18rem .5rem;font-size:.7rem;margin-top:.65rem;margin-right:.3rem}
+.answers{background:var(--panel);border-radius:1.2rem;overflow:hidden;margin-bottom:.9rem}
+.answer{display:flex;align-items:flex-start;gap:.8rem;padding:.95rem 1.05rem;width:100%;border-bottom:1px solid #303030;border-radius:0;background:transparent;text-align:left;line-height:1.38}
+.answer:last-child{border:0}.letter{border:2px solid #818187;border-radius:50%;width:1.7rem;min-width:1.7rem;height:1.7rem;display:grid;place-items:center;font-size:.75rem;font-weight:700}
+.answer.chosen .letter{background:var(--purple);border-color:var(--purple);color:#fff}
+.answer.correct{color:var(--teal);font-weight:700}.answer.correct .letter{background:var(--teal);border-color:var(--teal);color:#fff}
+.answer.wrong{color:var(--red)}.answer.wrong .letter{background:var(--red);border-color:var(--red);color:#181818}
+.explain{background:#1d3533;border-left:4px solid var(--teal);padding:.85rem .95rem;border-radius:.7rem;margin-bottom:.9rem;font-size:.88rem;line-height:1.48}
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-bottom:1rem}
+.metric{background:var(--panel);border-radius:1rem;padding:.95rem}.metric strong{display:block;font-size:1.45rem;color:var(--teal);margin-top:.15rem}
+.config-row{display:flex;align-items:center;justify-content:space-between;gap:.65rem;padding:.7rem .9rem;background:var(--panel2);border-radius:.9rem;margin-bottom:.5rem}
+.config-row input[type=number]{width:4.6rem;text-align:center}
+.bar{height:.48rem;background:#35353a;border-radius:999px;overflow:hidden;margin:.4rem 0}.bar span{display:block;height:100%;background:var(--teal)}
+#toast{position:fixed;bottom:5.2rem;left:50%;transform:translateX(-50%);background:#3a3047;color:#fff;padding:.7rem 1.1rem;border-radius:.8rem;box-shadow:0 8px 24px #0008;z-index:100;display:none;max-width:90vw;font-size:.86rem}
+@media(max-width:740px){.grid{grid-template-columns:repeat(2,1fr)}.stat-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:460px){.grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr}.brand small{display:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand" onclick="setTab('quiz')"><span>i</span>Residencia <small id="sectionName">→ Quiz</small></div>
+  <div class="top-actions">
+    <div class="zoom-controls">
+      <button onclick="changeZoom(-0.08)">A−</button>
+      <span class="zoom-value" id="zoomVal">100%</span>
+      <button onclick="changeZoom(0.08)">A+</button>
+    </div>
+    <button class="iconbtn" onclick="syncAll(true)" title="Sincronizar con Gemini">↻</button>
+    <button class="iconbtn" onclick="setTab('settings')" title="Ajustes de sincronización">⚙</button>
+  </div>
+</header>
+<div class="statusbar">
+  <span id="syncStatus">Cargando datos…</span>
+  <span>GitHub · Gemini</span>
+</div>
+<main id="app"><div class="card muted">Cargando iResidencia…</div></main>
+<nav class="bottom">
+  <button data-tab="quiz" class="active" onclick="setTab('quiz')"><span>☑</span>Quiz</button>
+  <button data-tab="exams" onclick="setTab('exams')"><span>▤</span>Simulador</button>
+  <button data-tab="gemini" onclick="setTab('gemini')"><span>✦</span>Gemini</button>
+  <button data-tab="history" onclick="setTab('history')"><span>◷</span>Historial</button>
+  <button data-tab="stats" onclick="setTab('stats')"><span>▥</span>Stats</button>
+</nav>
+<div id="toast"></div>
+<script>
+const REPO = 'drcarlosperseverance-beep/iResidencia-Gemini';
+const CAT_ICONS = {1:'🩺',2:'🧬',3:'🏥',4:'👶',5:'🫀',6:'🤰'};
+const DEFAULT_CATS = [
+  {id:1,name:'Cirugía General',count:1839},{id:2,name:'Ciencias Básicas',count:5345},
+  {id:3,name:'Salud Pública',count:976},{id:4,name:'Pediatría',count:4186},
+  {id:5,name:'Medicina Interna',count:2603},{id:6,name:'Ginecología y Obstetricia',count:2634}
+];
+const state = {
+  tab:'quiz', zoom:Number(localStorage.getItem('ires_zoom')||1),
+  meta:{categories:DEFAULT_CATS,exams:[]},
+  gemini:{planGemini:[],preguntasExtra:[],updatedAt:''},
+  history:JSON.parse(localStorage.getItem('ires_hist')||'[]'),
+  marks:JSON.parse(localStorage.getItem('ires_marks')||'{}'),
+  planDone:JSON.parse(localStorage.getItem('ires_plan_done')||'{}'),
+  ghToken:localStorage.getItem('ires_gh_token')||'',
+  activeQuiz:null, timer:null, catCache:{}
+};
+function saveLocal(){
+  localStorage.setItem('ires_hist',JSON.stringify(state.history));
+  localStorage.setItem('ires_marks',JSON.stringify(state.marks));
+  localStorage.setItem('ires_plan_done',JSON.stringify(state.planDone));
+}
+function applyZoom(){
+  document.documentElement.style.setProperty('--ui-scale',state.zoom.toFixed(2));
+  document.getElementById('zoomVal').textContent=Math.round(state.zoom*100)+'%';
+  localStorage.setItem('ires_zoom',state.zoom.toFixed(2));
+}
+function changeZoom(d){state.zoom=Math.min(1.3,Math.max(0.75,state.zoom+d));applyZoom();}
+function toast(m){const el=document.getElementById('toast');el.textContent=m;el.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>el.style.display='none',3000);}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function shuffle(a){const r=a.slice();for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
+function fmtTime(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+
+async function syncAll(showMsg){
+  const q='?t='+Date.now();
+  try{
+    const [mRes,gRes]=await Promise.all([fetch('data/meta.json'+q).catch(()=>null),fetch('data/gemini_sync.json'+q).catch(()=>null)]);
+    if(mRes && mRes.ok) state.meta = await mRes.json();
+    if(gRes && gRes.ok) state.gemini = await gRes.json();
+    const uRes = await fetch('data/user_sync.json'+q).catch(()=>null);
+    if(uRes && uRes.ok){
+      const remote = await uRes.json();
+      if(Array.isArray(remote.history) && remote.history.length > state.history.length) state.history = remote.history;
+      if(remote.marks) state.marks = Object.assign({}, remote.marks, state.marks);
+      if(remote.planDone) state.planDone = Object.assign({}, remote.planDone, state.planDone);
+      saveLocal();
+    }
+    document.getElementById('syncStatus').innerHTML='<span class="badge-ok">● Conectado con GitHub & Gemini</span>'+(state.gemini.updatedAt?' · '+esc(state.gemini.updatedAt):'');
+    if(showMsg) toast('Sincronizado ✓');
+  }catch(e){
+    document.getElementById('syncStatus').textContent='Modo offline (guardado en este dispositivo)';
+  }
+  render();
+}
+
+async function pushUserSyncToGitHub(){
+  if(!state.ghToken){ toast('Guardado localmente. Agregá tu token en ⚙ para subirlo a GitHub.'); return; }
+  const path='docs/data/user_sync.json';
+  const api=`https://api.github.com/repos/${REPO}/contents/${path}`;
+  try{
+    let sha=null;
+    const cur=await fetch(api,{headers:{Authorization:'Bearer '+state.ghToken}});
+    if(cur.ok){const j=await cur.json();sha=j.sha;}
+    const payload={updatedAt:new Date().toISOString(),history:state.history.slice(0,100),marks:state.marks,planDone:state.planDone};
+    const content=btoa(unescape(encodeURIComponent(JSON.stringify(payload,null,2))));
+    const res=await fetch(api,{
+      method:'PUT',
+      headers:{Authorization:'Bearer '+state.ghToken,'Content-Type':'application/json'},
+      body:JSON.stringify({message:'Sync progreso usuario desde app',content,sha:sha||undefined})
+    });
+    if(res.ok) toast('Progreso subido a GitHub para Gemini ✓');
+    else toast('No se pudo subir a GitHub (revisá tu token en ⚙)');
+  }catch(e){ toast('Sin conexión para subir a GitHub'); }
+}
+
+function setTab(t){
+  if(state.activeQuiz && t!=='runner'){
+    if(!confirm('Tenés un quiz en curso. ¿Salir sin guardar?')) return;
+    clearInterval(state.timer); state.activeQuiz=null;
+  }
+  state.tab=t;
+  document.querySelectorAll('.bottom button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  const names={quiz:'→ Quiz',exams:'→ Simulador',gemini:'→ Gemini',history:'→ Historial',stats:'→ Stats',settings:'→ Ajustes',runner:'→ En curso'};
+  document.getElementById('sectionName').textContent=names[t]||'';
+  render();
+}
+
+function render(){
+  const root=document.getElementById('app');
+  if(state.activeQuiz){renderRunner(root);return;}
+  if(state.tab==='quiz') renderQuizHome(root);
+  else if(state.tab==='exams') renderExams(root);
+  else if(state.tab==='gemini') renderGemini(root);
+  else if(state.tab==='history') renderHistory(root);
+  else if(state.tab==='stats') renderStats(root);
+  else if(state.tab==='settings') renderSettings(root);
+}
+
+function renderQuizHome(root){
+  const extras=state.gemini.preguntasExtra||[];
+  const plans=state.gemini.planGemini||[];
+  const pending=plans.filter(p=>!state.planDone[p.id]).length;
+  let h=`<section class="hero"><div class="eyebrow">iResidencia · Web + APK + Gemini</div><h1>Tu práctica de residencia sincronizada</h1><p>Misma experiencia en la web y en tu APK. Las preguntas y repasos que Gemini carga en tu repositorio aparecen automáticamente acá.</p></section>
+  <div class="card row"><div><h2 style="margin-bottom:.2rem">Simulacro General</h2><p class="muted" style="margin:0;font-size:.86rem">Combiná las seis categorías (10 a 180 preguntas).</p></div>
+  <div class="row"><button class="primary" onclick="openCustomizer()">Personalizar →</button>${extras.length?`<button class="teal" onclick="startExtras()">Preguntas Gemini (${extras.length})</button>`:''}</div></div>
+  ${pending?`<div class="card row" style="border:1px solid #4d3f6b"><div><strong>✦ ${pending} tarea(s) de Gemini pendiente(s)</strong><p class="muted" style="margin:.2rem 0 0;font-size:.82rem">Tocá para ver tus microlecciones y repasos.</p></div><button class="ghost" onclick="setTab('gemini')">Abrir →</button></div>`:''}
+  <h2 style="margin:1rem 0 .75rem">Practicá por categoría</h2><div class="grid">`;
+  (state.meta.categories||DEFAULT_CATS).forEach(c=>{
+    h+=`<div class="card cat-card" onclick="quickCat(${c.id},'${esc(c.name)}')"><div><div class="cat-banner c${c.id}"><span>${CAT_ICONS[c.id]||'📘'}</span><span style="font-size:.9rem">${(c.count||0).toLocaleString('es')}</span></div><h3>${esc(c.name)}</h3><p class="muted" style="font-size:.82rem;margin-bottom:.6rem">${(c.count||0).toLocaleString('es')} preguntas</p></div><div class="cat-foot">Quiz rápido (15) →</div></div>`;
+  });
+  h+='</div><div id="customBox"></div>';
+  root.innerHTML=h;
+}
+
+function openCustomizer(){
+  const box=document.getElementById('customBox');
+  const rows=(state.meta.categories||DEFAULT_CATS).map(c=>`<div class="config-row"><div><strong>${esc(c.name)}</strong></div><input type="number" min="0" max="30" value="5" id="cnt_${c.id}"></div>`).join('');
+  box.innerHTML=`<div class="card" style="margin-top:.9rem;border:1px solid var(--purple)"><h2>Simulacro Personalizado</h2>${rows}<div style="margin:.8rem 0"><label class="muted" style="font-size:.82rem">Modo:</label> <select id="qMode"><option value="immediate">Inmediato</option><option value="final">Al finalizar</option></select></div><div class="row"><button class="ghost" onclick="document.getElementById('customBox').innerHTML=''">Cancelar</button><button class="primary" onclick="launchCustom()">Comenzar →</button></div></div>`;
+  box.scrollIntoView({behavior:'smooth'});
+}
+
+async function loadCat(cid){
+  if(state.catCache[cid]) return state.catCache[cid];
+  const r=await fetch(`data/cat_${cid}.json`);
+  if(!r.ok) throw new Error('Banco de categoría aún cargándose en GitHub.');
+  const d=await r.json(); state.catCache[cid]=d; return d;
+}
+
+async function quickCat(cid,name){
+  document.getElementById('app').innerHTML='<div class="card muted">Cargando preguntas de '+esc(name)+'…</div>';
+  try{
+    const pool=await loadCat(cid);
+    const extras=(state.gemini.preguntasExtra||[]).filter(q=>q.category===cid);
+    const picked=shuffle(extras.concat(pool)).slice(0,15).map(q=>({...q,categoryName:q.categoryName||name}));
+    beginQuiz(name,'immediate',picked);
+  }catch(e){ toast(e.message); render(); }
+}
+
+async function launchCustom(){
+  const counts={}; let total=0;
+  (state.meta.categories||DEFAULT_CATS).forEach(c=>{const v=Number(document.getElementById('cnt_'+c.id).value)||0;if(v>0){counts[c.id]=v;total+=v;}});
+  if(total<1||total>180){toast('Elegí entre 1 y 180 preguntas.');return;}
+  const mode=document.getElementById('qMode').value;
+  document.getElementById('app').innerHTML='<div class="card muted">Armando simulacro…</div>';
+  try{
+    let res=[];
+    for(const cidStr of Object.keys(counts)){
+      const cid=Number(cidStr), catName=(state.meta.categories.find(x=>x.id===cid)||{}).name||'';
+      const pool=await loadCat(cid);
+      res=res.concat(shuffle(pool).slice(0,counts[cidStr]).map(q=>({...q,categoryName:catName})));
+    }
+    beginQuiz('Simulacro ('+res.length+')',mode,shuffle(res));
+  }catch(e){ toast(e.message); render(); }
+}
+
+function startExtras(){
+  const ex=state.gemini.preguntasExtra||[];
+  if(!ex.length){toast('Sin preguntas de Gemini todavía.');return;}
+  beginQuiz('Preguntas de Gemini','immediate',ex.slice());
+}
+
+function renderExams(root){
+  const exams=state.meta.exams||[];
+  let h='<h2>Simulador de Exámenes</h2><p class="muted">Exámenes completos de residencia (2020–2024).</p>';
+  if(!exams.length) h+='<div class="card muted">El banco de exámenes se está importando en GitHub Actions… tocá ↻ en un minuto.</div>';
+  exams.forEach(ex=>{
+    h+=`<div class="card row"><div><h3 style="margin-bottom:.2rem">${esc(ex.name)}</h3><span class="muted" style="font-size:.82rem">${ex.count} preguntas · ${ex.year}</span></div><button class="primary" onclick="startExam(${ex.id},'${esc(ex.name)}')">Iniciar →</button></div>`;
+  });
+  root.innerHTML=h;
+}
+
+async function startExam(id,name){
+  document.getElementById('app').innerHTML='<div class="card muted">Cargando '+esc(name)+'…</div>';
+  try{
+    const r=await fetch('data/exams.json'); if(!r.ok) throw new Error('Exámenes no disponibles aún.');
+    const all=await r.json();
+    const qs=all.filter(q=>Number(q.exam)===Number(id)).sort((a,b)=>(a.number||0)-(b.number||0));
+    beginQuiz(name,'final',qs);
+  }catch(e){ toast(e.message); render(); }
+}
+
+function beginQuiz(title,mode,questions){
+  state.activeQuiz={title,mode,questions,index:0,answers:{},checked:{},elapsed:0,status:'ongoing'};
+  document.getElementById('sectionName').textContent='→ En curso';
+  clearInterval(state.timer);
+  state.timer=setInterval(()=>{if(state.activeQuiz&&state.activeQuiz.status==='ongoing'){state.activeQuiz.elapsed++;const el=document.getElementById('tVal');if(el)el.textContent=fmtTime(state.activeQuiz.elapsed);}},1000);
+  render();
+}
+
+function renderRunner(root){
+  const qz=state.activeQuiz, q=qz.questions[qz.index], chosen=qz.answers[q.id];
+  const rev=qz.status==='completed'||(qz.mode==='immediate'&&qz.checked[q.id]);
+  const mk=state.marks[String(q.id)]||{fav:false,doubt:false,note:''};
+  const nav=qz.questions.map((it,i)=>{
+    let c=i===qz.index?'selected':'';const a=qz.answers[it.id];
+    if(a!=null){const r2=qz.status==='completed'||(qz.mode==='immediate'&&qz.checked[it.id]);c+=r2?(it.options.find(o=>o.id===a)?.correct?' good':' bad'):' answered';}
+    return `<button class="${c}" onclick="jumpQ(${i})">${i+1}</button>`;
+  }).join('');
+  const letters=['A','B','C','D','E','F'];
+  const ans=q.options.map((o,i)=>{
+    let c='answer';if(chosen===o.id)c+=' chosen';
+    if(rev){if(o.correct)c+=' correct';else if(chosen===o.id)c+=' wrong';}
+    return `<button class="${c}" ${rev?'disabled':''} onclick="pickAns('${esc(q.id)}',${o.id})"><span class="letter">${letters[i]||i+1}</span><span>${esc(o.text)}</span></button>`;
+  }).join('');
+  let sum='';
+  if(qz.status==='completed'){
+    const sc=scoreQz(qz);
+    sum=`<div class="card" style="text-align:center;border:1px solid var(--teal)"><div class="muted">Resultado guardado</div><div style="font-size:2.8rem;font-weight:800;color:var(--teal)">${sc.pct}%</div><p>${sc.ok} correctas · ${sc.bad} incorrectas · ${sc.un} sin responder · ${fmtTime(qz.elapsed)}</p><button class="primary" onclick="state.activeQuiz=null;setTab('quiz')">Volver al inicio</button></div>`;
+  }
+  root.innerHTML=`${sum}<div class="row" style="margin-bottom:.35rem"><strong>${esc(qz.title)}</strong><span class="muted">${qz.index+1}/${qz.questions.length} · <span id="tVal" style="color:var(--teal)">${fmtTime(qz.elapsed)}</span></span></div>
+  <div class="qnav">${nav}</div>
+  <div class="question-box">${esc(q.text)}<div><span class="tag">${esc(q.categoryName||'Residencia')}</span><span class="tag">${esc(q.id)}</span>${q.origin?`<span class="tag">✦ ${esc(q.origin)}</span>`:''}</div></div>
+  <div class="answers">${ans}</div>
+  ${rev&&q.explanation?`<div class="explain"><strong>Explicación:</strong> ${esc(q.explanation)}</div>`:''}
+  <div class="row"><div class="row" style="gap:.4rem">
+    <button class="${mk.fav?'teal':'ghost'}" onclick="toggleMk('${esc(q.id)}','fav')">${mk.fav?'★ Favorito':'☆ Favorito'}</button>
+    <button class="${mk.doubt?'danger':'ghost'}" onclick="toggleMk('${esc(q.id)}','doubt')">${mk.doubt?'? Duda':'? Duda'}</button>
+    <button class="ghost" onclick="editNote('${esc(q.id)}')">✎ Nota</button>
+  </div><div class="row" style="gap:.4rem">
+    <button onclick="jumpQ(${qz.index-1})" ${qz.index===0?'disabled':''}>←</button>
+    ${qz.index<qz.questions.length-1?`<button class="primary" onclick="jumpQ(${qz.index+1})">Siguiente →</button>`:(qz.status==='ongoing'?`<button class="teal" onclick="finishQz()">Finalizar ✓</button>`:'')}
+  </div></div>`;
+}
+function jumpQ(i){if(!state.activeQuiz||i<0||i>=state.activeQuiz.questions.length)return;state.activeQuiz.index=i;render();}
+function pickAns(qid,oid){const qz=state.activeQuiz;qz.answers[qid]=oid;if(qz.mode==='immediate')qz.checked[qid]=true;render();}
+function scoreQz(qz){let ok=0,bad=0,un=0;qz.questions.forEach(q=>{const a=qz.answers[q.id];if(a==null)un++;else if(q.options.find(o=>o.id===a)?.correct)ok++;else bad++;});return{ok,bad,un,total:qz.questions.length,pct:qz.questions.length?Math.round(ok/qz.questions.length*100):0};}
+function finishQz(){
+  const qz=state.activeQuiz; clearInterval(state.timer); qz.status='completed';
+  const sc=scoreQz(qz);
+  state.history.unshift({id:Date.now(),fecha:new Date().toLocaleString('es'),titulo:qz.title,pct:sc.pct,ok:sc.ok,bad:sc.bad,un:sc.un,elapsed:qz.elapsed});
+  saveLocal(); pushUserSyncToGitHub(); render();
+}
+function toggleMk(id,f){const m=state.marks[id]||{fav:false,doubt:false,note:''};m[f]=!m[f];state.marks[id]=m;saveLocal();pushUserSyncToGitHub();render();}
+function editNote(id){const m=state.marks[id]||{fav:false,doubt:false,note:''};const t=prompt('Nota para Gemini:',m.note||'');if(t===null)return;m.note=t;state.marks[id]=m;saveLocal();pushUserSyncToGitHub();render();}
+
+function renderGemini(root){
+  const plans=state.gemini.planGemini||[], ex=state.gemini.preguntasExtra||[];
+  let h=`<div class="row" style="margin-bottom:.8rem"><h2 style="margin:0">✦ Plan de Gemini</h2>${ex.length?`<button class="primary" onclick="startExtras()">Practicar preguntas (${ex.length})</button>`:''}</div>`;
+  plans.forEach(p=>{
+    const done=!!state.planDone[p.id];
+    h+=`<div class="card"><div class="row"><strong>${esc(p.titulo)}</strong><span style="color:${done?'var(--teal)':'var(--amber)'};font-size:.8rem;font-weight:700">${done?'Completado':'Pendiente'}</span></div><div class="muted" style="font-size:.78rem;margin:.25rem 0 .5rem">${esc(p.tipo)} · ${esc(p.categoria)} · ${esc(p.fecha)}</div><p style="line-height:1.45">${esc(p.contenido)}</p><button class="${done?'ghost':'teal'}" onclick="state.planDone['${esc(p.id)}']=!state.planDone['${esc(p.id)}'];saveLocal();pushUserSyncToGitHub();render()">${done?'Marcar pendiente':'Marcar completado ✓'}</button></div>`;
+  });
+  root.innerHTML=h;
+}
+
+function renderHistory(root){
+  let h='<h2>Historial</h2>';
+  if(!state.history.length){root.innerHTML=h+'<div class="card muted">Todavía no completaste ningún quiz.</div>';return;}
+  state.history.forEach(x=>{
+    h+=`<div class="card"><div class="row"><div><h3 style="margin-bottom:.15rem">${esc(x.titulo)}</h3><div class="muted" style="font-size:.8rem">${esc(x.fecha)}</div></div><strong style="font-size:1.4rem;color:var(--teal)">${x.pct}%</strong></div><div class="bar"><span style="width:${x.pct}%"></span></div><div class="muted" style="font-size:.8rem">${x.ok} correctas · ${x.bad} incorrectas · ${fmtTime(x.elapsed||0)}</div></div>`;
+  });
+  root.innerHTML=h;
+}
+
+function renderStats(root){
+  const n=state.history.length, avg=n?Math.round(state.history.reduce((a,b)=>a+b.pct,0)/n):0;
+  const mks=Object.entries(state.marks);
+  const favs=mks.filter(([,v])=>v.fav).length, doubts=mks.filter(([,v])=>v.doubt).length;
+  root.innerHTML=`<h2>Estadísticas</h2><div class="stat-grid"><div class="metric"><span class="muted">Quizzes</span><strong>${n}</strong></div><div class="metric"><span class="muted">Promedio</span><strong>${avg}%</strong></div><div class="metric"><span class="muted">Fav / Dudas</span><strong>${favs}/${doubts}</strong></div></div><div class="card"><h3>Preguntas marcadas</h3>${mks.length?mks.map(([id,v])=>`<div class="config-row"><div><strong>${esc(id)}</strong>${v.note?`<div class="muted" style="font-size:.8rem">✎ ${esc(v.note)}</div>`:''}</div><div>${v.fav?'★ ':''}${v.doubt?'?':''}</div></div>`).join(''):'<p class="muted">Sin marcas todavía.</p>'}</div>`;
+}
+
+function renderSettings(root){
+  root.innerHTML=`<h2>Ajustes de sincronización</h2>
+  <div class="card"><h3>Sincronización automática App → Gemini (GitHub)</h3>
+  <p class="muted" style="font-size:.86rem">Lo que Gemini guarda en tu repositorio aparece solo en la web y el APK. Si además querés que tu historial y dudas suban solos a GitHub para que Gemini los lea, pegá aquí un Personal Access Token (con permiso Contents: Read & Write sobre este repo):</p>
+  <input id="tkIn" type="password" value="${esc(state.ghToken)}" placeholder="github_pat_..." style="width:100%;margin-bottom:.7rem">
+  <div class="row"><button class="primary" onclick="state.ghToken=document.getElementById('tkIn').value.trim();localStorage.setItem('ires_gh_token',state.ghToken);toast('Token guardado');pushUserSyncToGitHub()">Guardar y sincronizar</button>
+  <button class="ghost" onclick="exportBackup()">Exportar JSON</button></div></div>`;
+}
+
+function exportBackup(){
+  const blob=new Blob([JSON.stringify({history:state.history,marks:state.marks,planDone:state.planDone},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='iresidencia-backup.json';a.click();
+}
+
+applyZoom(); syncAll(false);
+</script>
+</body>
+</html>
