@@ -1,8 +1,44 @@
 {
   "updatedAt": "2026-11-23",
+  "simulacrosGemini": [
+    {
+      "id": "sim_cb_20261123_10",
+      "fecha": "2026-11-23",
+      "titulo": "Simulacro Ciencias Básicas (10 preguntas · Word)",
+      "categoria": "Ciencias Básicas",
+      "mode": "immediate",
+      "categories": [2],
+      "questionIds": ["q6911", "q6141", "q3212", "q3326", "q6781", "q2609", "q6539", "q5114", "q5207", "q3432"]
+    }
+  ],
   "planGemini": [
     {
       "id": "plan_001",
+      "fecha": "2026-11-23",
+      "titulo": "Repaso Módulo 1: Evaluación preanestésica (ASA y Mallampati)",
+      "tipo": "Microlección / Repaso",
+      "categoria": "Cirugía General",
+      "contenido": "Practicá la pregunta gemini_anest_001 en Preguntas Gemini y resolvé el Simulacro de Ciencias Básicas (10 preguntas) guardado arriba."
+    }
+  ],
+  "preguntasExtra": [
+    {
+      "id": "gemini_anest_001",
+      "category": 1,
+      "categoryName": "Cirugía General",
+      "origin": "Gemini",
+      "text": "Paciente de 54 años con hipertensión arterial controlada con enalapril y diabetes mellitus tipo 2 con HbA1c 6.8%, sin limitación funcional, programado para colecistectomía laparoscópica electiva. ¿Qué clasificación ASA le corresponde?",
+      "options": [
+        {"id": 1, "text": "ASA I", "correct": false},
+        {"id": 2, "text": "ASA II", "correct": true},
+        {"id": 3, "text": "ASA III", "correct": false},
+        {"id": 4, "text": "ASA IV", "correct": false},
+        {"id": 5, "text": "ASA II-E", "correct": false}
+      ],
+      "explanation": "Enfermedad sistémica leve bien controlada (HTA/DM2 controladas) sin limitación funcional corresponde a ASA II; al ser electiva no lleva el sufijo E."
+    }
+  ]
+}
       "fecha": "2026-11-23",
       "titulo": "Repaso Módulo 1: Evaluación preanestésica (ASA y Mallampati)",
       "tipo": "Microlección / Repaso",
