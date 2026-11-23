@@ -1,0 +1,165 @@
+name: Build iResidencia APK
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Generate Android WebView project
+        run: |
+          mkdir -p android_app/app/src/main/java/com/iresidencia/gemini
+          mkdir -p android_app/app/src/main/res/values
+
+          cat << 'EOF' > android_app/settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "iResidenciaGemini"
+          include ':app'
+          EOF
+
+          cat << 'EOF' > android_app/build.gradle
+          plugins {
+              id 'com.android.application' version '8.4.2' apply false
+          }
+          EOF
+
+          cat << 'EOF' > android_app/app/build.gradle
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'com.iresidencia.gemini'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.iresidencia.gemini"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0.0"
+              }
+              buildTypes {
+                  release { minifyEnabled false }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          EOF
+
+          cat << 'EOF' > android_app/app/src/main/res/values/styles.xml
+          <resources>
+              <style name="AppTheme" parent="android:Theme.DeviceDefault.NoActionBar">
+                  <item name="android:windowBackground">#121212</item>
+                  <item name="android:statusBarColor">#121212</item>
+                  <item name="android:navigationBarColor">#202020</item>
+              </style>
+          </resources>
+          EOF
+
+          cat << 'EOF' > android_app/app/src/main/AndroidManifest.xml
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application
+                  android:label="iResidencia"
+                  android:theme="@style/AppTheme"
+                  android:usesCleartextTraffic="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:configChanges="orientation|screenSize|keyboardHidden">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > android_app/app/src/main/java/com/iresidencia/gemini/MainActivity.java
+          package com.iresidencia.gemini;
+
+          import android.app.Activity;
+          import android.graphics.Color;
+          import android.os.Bundle;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+
+          public class MainActivity extends Activity {
+              private WebView webView;
+              private static final String APP_URL = "https://drcarlosperseverance-beep.github.io/iResidencia-Gemini/";
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  webView = new WebView(this);
+                  webView.setBackgroundColor(Color.parseColor("#121212"));
+                  WebSettings s = webView.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  s.setDatabaseEnabled(true);
+                  s.setCacheMode(WebSettings.LOAD_DEFAULT);
+                  webView.setWebViewClient(new WebViewClient());
+                  webView.setWebChromeClient(new WebChromeClient());
+                  setContentView(webView);
+                  webView.loadUrl(APP_URL);
+              }
+
+              @Override
+              public void onBackPressed() {
+                  if (webView != null && webView.canGoBack()) {
+                      webView.goBack();
+                  } else {
+                      super.onBackPressed();
+                  }
+              }
+          }
+          EOF
+      - name: Build APK
+        working-directory: android_app
+        run: gradle assembleDebug --no-daemon
+      - name: Publish APK Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp android_app/app/build/outputs/apk/debug/app-debug.apk iResidencia-Gemini-v1.0.0.apk
+          if gh release view v1.0.0 --json assets --jq '.assets[].name' > release-assets.txt 2>/dev/null; then
+            if ! grep -Fxq 'iResidencia-Gemini-v1.0.0.apk' release-assets.txt; then
+              gh release upload v1.0.0 iResidencia-Gemini-v1.0.0.apk
+            fi
+            exit 0
+          fi
+          gh release create v1.0.0 iResidencia-Gemini-v1.0.0.apk \
+            --title "iResidencia Gemini v1.0.0" \
+            --notes "APK de iResidencia conectado en vivo con https://drcarlosperseverance-beep.github.io/iResidencia-Gemini/"
