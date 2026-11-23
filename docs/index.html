@@ -23,8 +23,8 @@ h1,h2,h3,p{margin-top:0}.muted{color:var(--muted)}
 .zoom-controls{display:flex;align-items:center;gap:3px}.zoom-controls button{padding:0;width:32px;height:32px;background:#36303f;border-radius:9px;font-size:13px;font-weight:700}
 .zoom-value{font-size:11px;min-width:32px;text-align:center;color:#cbbde3}
 .iconbtn{background:transparent;color:var(--purple);font-size:1.25rem;padding:4px 7px}
-.statusbar{max-width:1020px;margin:auto;padding:.55rem 1rem;font-size:.75rem;display:flex;justify-content:space-between;color:var(--muted)}
-.badge-ok{color:var(--teal);font-weight:600}
+.statusbar{max-width:1020px;margin:auto;padding:.55rem 1rem;font-size:.75rem;display:flex;justify-content:space-between;gap:.5rem;color:var(--muted)}
+.badge-ok{color:var(--teal);font-weight:600}.badge-off{color:var(--amber);font-weight:600}
 main{max-width:1020px;margin:auto;padding:.6rem 1rem 6rem}
 .hero{background:linear-gradient(135deg,#8773ad,#6c5a8f);border-radius:1.35rem;padding:1.3rem 1.4rem;margin-bottom:1.1rem;color:#fff}
 .eyebrow{text-transform:uppercase;letter-spacing:1.6px;font-size:.68rem;font-weight:700;opacity:.88;margin-bottom:.3rem}
@@ -72,12 +72,12 @@ main{max-width:1020px;margin:auto;padding:.6rem 1rem 6rem}
       <button onclick="changeZoom(0.08)">A+</button>
     </div>
     <button class="iconbtn" onclick="syncAll(true)" title="Sincronizar con Gemini">↻</button>
-    <button class="iconbtn" onclick="setTab('settings')" title="Ajustes de sincronización">⚙</button>
+    <button class="iconbtn" onclick="setTab('settings')" title="Ajustes y modo offline">⚙</button>
   </div>
 </header>
 <div class="statusbar">
   <span id="syncStatus">Cargando datos…</span>
-  <span>GitHub · Gemini</span>
+  <span id="offlineBadge"></span>
 </div>
 <main id="app"><div class="card muted">Cargando iResidencia…</div></main>
 <nav class="bottom">
@@ -90,6 +90,7 @@ main{max-width:1020px;margin:auto;padding:.6rem 1rem 6rem}
 <div id="toast"></div>
 <script>
 const REPO = 'drcarlosperseverance-beep/iResidencia-Gemini';
+const CACHE_NAME = 'iresidencia-offline-v2';
 const CAT_ICONS = {1:'🩺',2:'🧬',3:'🏥',4:'👶',5:'🫀',6:'🤰'};
 const DEFAULT_CATS = [
   {id:1,name:'Cirugía General',count:1839},{id:2,name:'Ciencias Básicas',count:5345},
@@ -98,18 +99,24 @@ const DEFAULT_CATS = [
 ];
 const state = {
   tab:'quiz', zoom:Number(localStorage.getItem('ires_zoom')||1),
-  meta:{categories:DEFAULT_CATS,exams:[]},
-  gemini:{planGemini:[],preguntasExtra:[],updatedAt:''},
+  meta:JSON.parse(localStorage.getItem('ires_meta')||'null')||{categories:DEFAULT_CATS,exams:[]},
+  gemini:JSON.parse(localStorage.getItem('ires_gemini')||'null')||{planGemini:[],preguntasExtra:[],updatedAt:''},
   history:JSON.parse(localStorage.getItem('ires_hist')||'[]'),
   marks:JSON.parse(localStorage.getItem('ires_marks')||'{}'),
   planDone:JSON.parse(localStorage.getItem('ires_plan_done')||'{}'),
   ghToken:localStorage.getItem('ires_gh_token')||'',
+  pendingSync:localStorage.getItem('ires_pending')==='1',
+  offlineReady:localStorage.getItem('ires_offline_ready')==='1',
+  downloadingOffline:false,
   activeQuiz:null, timer:null, catCache:{}
 };
-function saveLocal(){
+function saveLocal(markPending){
   localStorage.setItem('ires_hist',JSON.stringify(state.history));
   localStorage.setItem('ires_marks',JSON.stringify(state.marks));
   localStorage.setItem('ires_plan_done',JSON.stringify(state.planDone));
+  localStorage.setItem('ires_meta',JSON.stringify(state.meta));
+  localStorage.setItem('ires_gemini',JSON.stringify(state.gemini));
+  if(markPending){ state.pendingSync=true; localStorage.setItem('ires_pending','1'); }
 }
 function applyZoom(){
   document.documentElement.style.setProperty('--ui-scale',state.zoom.toFixed(2));
@@ -117,12 +124,53 @@ function applyZoom(){
   localStorage.setItem('ires_zoom',state.zoom.toFixed(2));
 }
 function changeZoom(d){state.zoom=Math.min(1.3,Math.max(0.75,state.zoom+d));applyZoom();}
-function toast(m){const el=document.getElementById('toast');el.textContent=m;el.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>el.style.display='none',3000);}
+function toast(m){const el=document.getElementById('toast');el.textContent=m;el.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>el.style.display='none',3200);}
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function shuffle(a){const r=a.slice();for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
 function fmtTime(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
 
+function updateStatusBar(){
+  const st=document.getElementById('syncStatus');
+  const ob=document.getElementById('offlineBadge');
+  if(navigator.onLine){
+    st.innerHTML='<span class="badge-ok">● Online</span>'+(state.pendingSync?' · Pendiente de subir':' · Sincronizado');
+  }else{
+    st.innerHTML='<span class="badge-off">● Sin internet</span> · Guardado en dispositivo';
+  }
+  ob.textContent=state.offlineReady?'✓ Offline listo':'Solo online';
+}
+
+async function downloadOfflinePack(silent){
+  if(!('caches' in window)){ if(!silent) toast('Este navegador no soporta caché offline.'); return; }
+  if(!navigator.onLine){ if(!silent) toast('Necesitás internet la primera vez para descargar el banco.'); return; }
+  state.downloadingOffline=true; render();
+  const files=['./','./index.html','./data/meta.json','./data/gemini_sync.json','./data/exams.json','./data/cat_1.json','./data/cat_2.json','./data/cat_3.json','./data/cat_4.json','./data/cat_5.json','./data/cat_6.json'];
+  try{
+    const cache=await caches.open(CACHE_NAME);
+    let ok=0;
+    for(const f of files){
+      try{
+        const r=await fetch(f);
+        if(r.ok){ await cache.put(f,r.clone()); ok++; }
+      }catch(_){}
+    }
+    if(ok>=6){
+      state.offlineReady=true;
+      localStorage.setItem('ires_offline_ready','1');
+      if(!silent) toast('¡Banco completo guardado para usar sin internet! ✓');
+    }else if(!silent){
+      toast('Descarga parcial ('+ok+'/'+files.length+'). Reintentá con buena señal.');
+    }
+  }catch(e){ if(!silent) toast('Error al guardar offline.'); }
+  state.downloadingOffline=false; updateStatusBar(); render();
+}
+
 async function syncAll(showMsg){
+  updateStatusBar();
+  if(!navigator.onLine){
+    if(showMsg) toast('Sin internet: usando datos guardados en el dispositivo.');
+    render(); return;
+  }
   const q='?t='+Date.now();
   try{
     const [mRes,gRes]=await Promise.all([fetch('data/meta.json'+q).catch(()=>null),fetch('data/gemini_sync.json'+q).catch(()=>null)]);
@@ -134,18 +182,25 @@ async function syncAll(showMsg){
       if(Array.isArray(remote.history) && remote.history.length > state.history.length) state.history = remote.history;
       if(remote.marks) state.marks = Object.assign({}, remote.marks, state.marks);
       if(remote.planDone) state.planDone = Object.assign({}, remote.planDone, state.planDone);
-      saveLocal();
     }
-    document.getElementById('syncStatus').innerHTML='<span class="badge-ok">● Conectado con GitHub & Gemini</span>'+(state.gemini.updatedAt?' · '+esc(state.gemini.updatedAt):'');
-    if(showMsg) toast('Sincronizado ✓');
-  }catch(e){
-    document.getElementById('syncStatus').textContent='Modo offline (guardado en este dispositivo)';
-  }
-  render();
+    saveLocal(false);
+    if(state.pendingSync && state.ghToken) await pushUserSyncToGitHub(true);
+    if(!state.offlineReady) downloadOfflinePack(true);
+    if(showMsg) toast('Sincronizado con Gemini ✓');
+  }catch(e){}
+  updateStatusBar(); render();
 }
 
-async function pushUserSyncToGitHub(){
-  if(!state.ghToken){ toast('Guardado localmente. Agregá tu token en ⚙ para subirlo a GitHub.'); return; }
+async function pushUserSyncToGitHub(silent){
+  if(!navigator.onLine){
+    saveLocal(true); updateStatusBar();
+    if(!silent) toast('Guardado offline. Se subirá automáticamente al volver internet.');
+    return;
+  }
+  if(!state.ghToken){
+    if(!silent) toast('Guardado en el dispositivo. Agregá tu token en ⚙ para subirlo a GitHub.');
+    return;
+  }
   const path='docs/data/user_sync.json';
   const api=`https://api.github.com/repos/${REPO}/contents/${path}`;
   try{
@@ -159,9 +214,11 @@ async function pushUserSyncToGitHub(){
       headers:{Authorization:'Bearer '+state.ghToken,'Content-Type':'application/json'},
       body:JSON.stringify({message:'Sync progreso usuario desde app',content,sha:sha||undefined})
     });
-    if(res.ok) toast('Progreso subido a GitHub para Gemini ✓');
-    else toast('No se pudo subir a GitHub (revisá tu token en ⚙)');
-  }catch(e){ toast('Sin conexión para subir a GitHub'); }
+    if(res.ok){
+      state.pendingSync=false; localStorage.setItem('ires_pending','0'); updateStatusBar();
+      if(!silent) toast('Progreso sincronizado con GitHub ✓');
+    }else if(!silent){ toast('Revisá tu token en ⚙'); }
+  }catch(e){ saveLocal(true); updateStatusBar(); }
 }
 
 function setTab(t){
@@ -191,7 +248,8 @@ function renderQuizHome(root){
   const extras=state.gemini.preguntasExtra||[];
   const plans=state.gemini.planGemini||[];
   const pending=plans.filter(p=>!state.planDone[p.id]).length;
-  let h=`<section class="hero"><div class="eyebrow">iResidencia · Web + APK + Gemini</div><h1>Tu práctica de residencia sincronizada</h1><p>Misma experiencia en la web y en tu APK. Las preguntas y repasos que Gemini carga en tu repositorio aparecen automáticamente acá.</p></section>
+  let h=`<section class="hero"><div class="eyebrow">iResidencia · Modo Offline + Sync Gemini</div><h1>Tu práctica de residencia siempre lista</h1><p>Estudiá sin internet desde el celular y sincronizá tu progreso con Gemini automáticamente apenas vuelvas a tener señal.</p></section>
+  ${!state.offlineReady?`<div class="card row" style="border:1px solid var(--teal)"><div><strong>⬇ Descargar banco para usar sin internet</strong><p class="muted" style="margin:.2rem 0 0;font-size:.82rem">Guarda las 18.074 preguntas y 5 exámenes en tu dispositivo.</p></div><button class="teal" ${state.downloadingOffline?'disabled':''} onclick="downloadOfflinePack(false)">${state.downloadingOffline?'Descargando…':'Descargar ahora'}</button></div>`:''}
   <div class="card row"><div><h2 style="margin-bottom:.2rem">Simulacro General</h2><p class="muted" style="margin:0;font-size:.86rem">Combiná las seis categorías (10 a 180 preguntas).</p></div>
   <div class="row"><button class="primary" onclick="openCustomizer()">Personalizar →</button>${extras.length?`<button class="teal" onclick="startExtras()">Preguntas Gemini (${extras.length})</button>`:''}</div></div>
   ${pending?`<div class="card row" style="border:1px solid #4d3f6b"><div><strong>✦ ${pending} tarea(s) de Gemini pendiente(s)</strong><p class="muted" style="margin:.2rem 0 0;font-size:.82rem">Tocá para ver tus microlecciones y repasos.</p></div><button class="ghost" onclick="setTab('gemini')">Abrir →</button></div>`:''}
@@ -213,7 +271,7 @@ function openCustomizer(){
 async function loadCat(cid){
   if(state.catCache[cid]) return state.catCache[cid];
   const r=await fetch(`data/cat_${cid}.json`);
-  if(!r.ok) throw new Error('Banco de categoría aún cargándose en GitHub.');
+  if(!r.ok) throw new Error('Sin conexión y categoría aún no descargada. Tocá "Descargar ahora" con internet.');
   const d=await r.json(); state.catCache[cid]=d; return d;
 }
 
@@ -253,7 +311,7 @@ function startExtras(){
 function renderExams(root){
   const exams=state.meta.exams||[];
   let h='<h2>Simulador de Exámenes</h2><p class="muted">Exámenes completos de residencia (2020–2024).</p>';
-  if(!exams.length) h+='<div class="card muted">El banco de exámenes se está importando en GitHub Actions… tocá ↻ en un minuto.</div>';
+  if(!exams.length) h+='<div class="card muted">Tocá ↻ con internet para cargar la lista de exámenes.</div>';
   exams.forEach(ex=>{
     h+=`<div class="card row"><div><h3 style="margin-bottom:.2rem">${esc(ex.name)}</h3><span class="muted" style="font-size:.82rem">${ex.count} preguntas · ${ex.year}</span></div><button class="primary" onclick="startExam(${ex.id},'${esc(ex.name)}')">Iniciar →</button></div>`;
   });
@@ -263,7 +321,7 @@ function renderExams(root){
 async function startExam(id,name){
   document.getElementById('app').innerHTML='<div class="card muted">Cargando '+esc(name)+'…</div>';
   try{
-    const r=await fetch('data/exams.json'); if(!r.ok) throw new Error('Exámenes no disponibles aún.');
+    const r=await fetch('data/exams.json'); if(!r.ok) throw new Error('Descargá el modo offline primero con internet.');
     const all=await r.json();
     const qs=all.filter(q=>Number(q.exam)===Number(id)).sort((a,b)=>(a.number||0)-(b.number||0));
     beginQuiz(name,'final',qs);
@@ -319,17 +377,17 @@ function finishQz(){
   const qz=state.activeQuiz; clearInterval(state.timer); qz.status='completed';
   const sc=scoreQz(qz);
   state.history.unshift({id:Date.now(),fecha:new Date().toLocaleString('es'),titulo:qz.title,pct:sc.pct,ok:sc.ok,bad:sc.bad,un:sc.un,elapsed:qz.elapsed});
-  saveLocal(); pushUserSyncToGitHub(); render();
+  saveLocal(true); pushUserSyncToGitHub(false); render();
 }
-function toggleMk(id,f){const m=state.marks[id]||{fav:false,doubt:false,note:''};m[f]=!m[f];state.marks[id]=m;saveLocal();pushUserSyncToGitHub();render();}
-function editNote(id){const m=state.marks[id]||{fav:false,doubt:false,note:''};const t=prompt('Nota para Gemini:',m.note||'');if(t===null)return;m.note=t;state.marks[id]=m;saveLocal();pushUserSyncToGitHub();render();}
+function toggleMk(id,f){const m=state.marks[id]||{fav:false,doubt:false,note:''};m[f]=!m[f];state.marks[id]=m;saveLocal(true);pushUserSyncToGitHub(true);render();}
+function editNote(id){const m=state.marks[id]||{fav:false,doubt:false,note:''};const t=prompt('Nota para Gemini:',m.note||'');if(t===null)return;m.note=t;state.marks[id]=m;saveLocal(true);pushUserSyncToGitHub(true);render();}
 
 function renderGemini(root){
   const plans=state.gemini.planGemini||[], ex=state.gemini.preguntasExtra||[];
   let h=`<div class="row" style="margin-bottom:.8rem"><h2 style="margin:0">✦ Plan de Gemini</h2>${ex.length?`<button class="primary" onclick="startExtras()">Practicar preguntas (${ex.length})</button>`:''}</div>`;
   plans.forEach(p=>{
     const done=!!state.planDone[p.id];
-    h+=`<div class="card"><div class="row"><strong>${esc(p.titulo)}</strong><span style="color:${done?'var(--teal)':'var(--amber)'};font-size:.8rem;font-weight:700">${done?'Completado':'Pendiente'}</span></div><div class="muted" style="font-size:.78rem;margin:.25rem 0 .5rem">${esc(p.tipo)} · ${esc(p.categoria)} · ${esc(p.fecha)}</div><p style="line-height:1.45">${esc(p.contenido)}</p><button class="${done?'ghost':'teal'}" onclick="state.planDone['${esc(p.id)}']=!state.planDone['${esc(p.id)}'];saveLocal();pushUserSyncToGitHub();render()">${done?'Marcar pendiente':'Marcar completado ✓'}</button></div>`;
+    h+=`<div class="card"><div class="row"><strong>${esc(p.titulo)}</strong><span style="color:${done?'var(--teal)':'var(--amber)'};font-size:.8rem;font-weight:700">${done?'Completado':'Pendiente'}</span></div><div class="muted" style="font-size:.78rem;margin:.25rem 0 .5rem">${esc(p.tipo)} · ${esc(p.categoria)} · ${esc(p.fecha)}</div><p style="line-height:1.45">${esc(p.contenido)}</p><button class="${done?'ghost':'teal'}" onclick="state.planDone['${esc(p.id)}']=!state.planDone['${esc(p.id)}'];saveLocal(true);pushUserSyncToGitHub(true);render()">${done?'Marcar pendiente':'Marcar completado ✓'}</button></div>`;
   });
   root.innerHTML=h;
 }
@@ -351,11 +409,14 @@ function renderStats(root){
 }
 
 function renderSettings(root){
-  root.innerHTML=`<h2>Ajustes de sincronización</h2>
+  root.innerHTML=`<h2>Ajustes y Modo Offline</h2>
+  <div class="card"><h3>Modo sin internet (Offline)</h3>
+  <p class="muted" style="font-size:.86rem">Estado actual: <strong>${state.offlineReady?'✓ Banco completo descargado en este dispositivo':'Pendiente de descarga'}</strong></p>
+  <button class="teal" ${state.downloadingOffline?'disabled':''} onclick="downloadOfflinePack(false)">${state.downloadingOffline?'Descargando…':'Descargar / actualizar banco offline'}</button></div>
   <div class="card"><h3>Sincronización automática App → Gemini (GitHub)</h3>
-  <p class="muted" style="font-size:.86rem">Lo que Gemini guarda en tu repositorio aparece solo en la web y el APK. Si además querés que tu historial y dudas suban solos a GitHub para que Gemini los lea, pegá aquí un Personal Access Token (con permiso Contents: Read & Write sobre este repo):</p>
+  <p class="muted" style="font-size:.86rem">Cuando vuelvas a tener internet, tu progreso se sube solo a GitHub si pegás aquí un Personal Access Token (Contents: Read & Write):</p>
   <input id="tkIn" type="password" value="${esc(state.ghToken)}" placeholder="github_pat_..." style="width:100%;margin-bottom:.7rem">
-  <div class="row"><button class="primary" onclick="state.ghToken=document.getElementById('tkIn').value.trim();localStorage.setItem('ires_gh_token',state.ghToken);toast('Token guardado');pushUserSyncToGitHub()">Guardar y sincronizar</button>
+  <div class="row"><button class="primary" onclick="state.ghToken=document.getElementById('tkIn').value.trim();localStorage.setItem('ires_gh_token',state.ghToken);toast('Token guardado');pushUserSyncToGitHub(false)">Guardar y sincronizar</button>
   <button class="ghost" onclick="exportBackup()">Exportar JSON</button></div></div>`;
 }
 
@@ -364,7 +425,13 @@ function exportBackup(){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='iresidencia-backup.json';a.click();
 }
 
-applyZoom(); syncAll(false);
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+}
+window.addEventListener('online',()=>{ updateStatusBar(); syncAll(true); });
+window.addEventListener('offline',()=>{ updateStatusBar(); toast('Modo sin internet activado: tu progreso se guarda localmente.'); });
+
+applyZoom(); updateStatusBar(); syncAll(false);
 </script>
 </body>
 </html>
