@@ -9,7 +9,7 @@
 :root{color-scheme:dark;--bg:#121212;--panel:#202020;--panel2:#292929;--purple:#9584b6;--teal:#51b9b0;--muted:#acacb3;--text:#ecebed;--red:#e68c99;--amber:#e8c47c;--ui-scale:1;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:calc(16px * var(--ui-scale,1))}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);min-height:100vh}
 button,input,select,textarea{font:inherit;color:var(--text)}
-button{cursor:pointer;border:0;border-radius:.9rem;background:#303033;padding:.68rem 1rem}
+button{cursor:pointer;border:0;border-radius:.9rem;background:#303033;padding:.65rem .95rem}
 button:hover:not(:disabled){filter:brightness(1.14)}button:disabled{opacity:.45;cursor:default}
 button.primary{background:var(--purple);color:#fff;font-weight:700}
 button.teal{background:#244442;color:#8bdbd3;font-weight:650}
@@ -100,7 +100,8 @@ const DEFAULT_CATS = [
 const state = {
   tab:'quiz', zoom:Number(localStorage.getItem('ires_zoom')||1),
   meta:JSON.parse(localStorage.getItem('ires_meta')||'null')||{categories:DEFAULT_CATS,exams:[]},
-  gemini:JSON.parse(localStorage.getItem('ires_gemini')||'null')||{planGemini:[],preguntasExtra:[],updatedAt:''},
+  gemini:JSON.parse(localStorage.getItem('ires_gemini')||'null')||{simulacrosGemini:[],planGemini:[],preguntasExtra:[],updatedAt:''},
+  savedQuizzes:JSON.parse(localStorage.getItem('ires_saved')||'[]'),
   history:JSON.parse(localStorage.getItem('ires_hist')||'[]'),
   marks:JSON.parse(localStorage.getItem('ires_marks')||'{}'),
   planDone:JSON.parse(localStorage.getItem('ires_plan_done')||'{}'),
@@ -111,12 +112,25 @@ const state = {
   activeQuiz:null, timer:null, catCache:{}
 };
 function saveLocal(markPending){
+  localStorage.setItem('ires_saved',JSON.stringify(state.savedQuizzes));
   localStorage.setItem('ires_hist',JSON.stringify(state.history));
   localStorage.setItem('ires_marks',JSON.stringify(state.marks));
   localStorage.setItem('ires_plan_done',JSON.stringify(state.planDone));
   localStorage.setItem('ires_meta',JSON.stringify(state.meta));
   localStorage.setItem('ires_gemini',JSON.stringify(state.gemini));
   if(markPending){ state.pendingSync=true; localStorage.setItem('ires_pending','1'); }
+}
+function upsertSavedQuiz(qz){
+  if(!qz || qz.status!=='ongoing') return;
+  qz.updatedAt = new Date().toLocaleString('es');
+  const idx = state.savedQuizzes.findIndex(x=>x.id===qz.id);
+  if(idx>=0) state.savedQuizzes[idx]=qz;
+  else state.savedQuizzes.unshift(qz);
+  saveLocal(true);
+}
+function removeSavedQuiz(id){
+  state.savedQuizzes = state.savedQuizzes.filter(x=>x.id!==id);
+  saveLocal(true);
 }
 function applyZoom(){
   document.documentElement.style.setProperty('--ui-scale',state.zoom.toFixed(2));
@@ -149,28 +163,19 @@ async function downloadOfflinePack(silent){
     const cache=await caches.open(CACHE_NAME);
     let ok=0;
     for(const f of files){
-      try{
-        const r=await fetch(f);
-        if(r.ok){ await cache.put(f,r.clone()); ok++; }
-      }catch(_){}
+      try{ const r=await fetch(f); if(r.ok){ await cache.put(f,r.clone()); ok++; } }catch(_){}
     }
     if(ok>=6){
-      state.offlineReady=true;
-      localStorage.setItem('ires_offline_ready','1');
+      state.offlineReady=true; localStorage.setItem('ires_offline_ready','1');
       if(!silent) toast('¡Banco completo guardado para usar sin internet! ✓');
-    }else if(!silent){
-      toast('Descarga parcial ('+ok+'/'+files.length+'). Reintentá con buena señal.');
-    }
+    }else if(!silent){ toast('Descarga parcial ('+ok+'/'+files.length+').'); }
   }catch(e){ if(!silent) toast('Error al guardar offline.'); }
   state.downloadingOffline=false; updateStatusBar(); render();
 }
 
 async function syncAll(showMsg){
   updateStatusBar();
-  if(!navigator.onLine){
-    if(showMsg) toast('Sin internet: usando datos guardados en el dispositivo.');
-    render(); return;
-  }
+  if(!navigator.onLine){ if(showMsg) toast('Sin internet: usando datos guardados.'); render(); return; }
   const q='?t='+Date.now();
   try{
     const [mRes,gRes]=await Promise.all([fetch('data/meta.json'+q).catch(()=>null),fetch('data/gemini_sync.json'+q).catch(()=>null)]);
@@ -192,38 +197,36 @@ async function syncAll(showMsg){
 }
 
 async function pushUserSyncToGitHub(silent){
-  if(!navigator.onLine){
-    saveLocal(true); updateStatusBar();
-    if(!silent) toast('Guardado offline. Se subirá automáticamente al volver internet.');
-    return;
-  }
-  if(!state.ghToken){
-    if(!silent) toast('Guardado en el dispositivo. Agregá tu token en ⚙ para subirlo a GitHub.');
-    return;
-  }
-  const path='docs/data/user_sync.json';
-  const api=`https://api.github.com/repos/${REPO}/contents/${path}`;
+  if(!navigator.onLine){ saveLocal(true); updateStatusBar(); if(!silent) toast('Guardado offline. Se subirá al volver internet.'); return; }
+  if(!state.ghToken){ if(!silent) toast('Guardado en tu dispositivo ✓'); return; }
+  const api=`https://api.github.com/repos/${REPO}/contents/docs/data/user_sync.json`;
   try{
     let sha=null;
     const cur=await fetch(api,{headers:{Authorization:'Bearer '+state.ghToken}});
     if(cur.ok){const j=await cur.json();sha=j.sha;}
-    const payload={updatedAt:new Date().toISOString(),history:state.history.slice(0,100),marks:state.marks,planDone:state.planDone};
+    const payload={updatedAt:new Date().toISOString(),history:state.history.slice(0,100),marks:state.marks,planDone:state.planDone,savedCount:state.savedQuizzes.length};
     const content=btoa(unescape(encodeURIComponent(JSON.stringify(payload,null,2))));
-    const res=await fetch(api,{
-      method:'PUT',
-      headers:{Authorization:'Bearer '+state.ghToken,'Content-Type':'application/json'},
-      body:JSON.stringify({message:'Sync progreso usuario desde app',content,sha:sha||undefined})
-    });
-    if(res.ok){
-      state.pendingSync=false; localStorage.setItem('ires_pending','0'); updateStatusBar();
-      if(!silent) toast('Progreso sincronizado con GitHub ✓');
-    }else if(!silent){ toast('Revisá tu token en ⚙'); }
+    const res=await fetch(api,{method:'PUT',headers:{Authorization:'Bearer '+state.ghToken,'Content-Type':'application/json'},body:JSON.stringify({message:'Sync progreso usuario',content,sha:sha||undefined})});
+    if(res.ok){ state.pendingSync=false; localStorage.setItem('ires_pending','0'); updateStatusBar(); if(!silent) toast('Sincronizado con GitHub ✓'); }
   }catch(e){ saveLocal(true); updateStatusBar(); }
+}
+
+function saveAndExitQuiz(){
+  if(state.activeQuiz && state.activeQuiz.status==='ongoing'){
+    upsertSavedQuiz(state.activeQuiz);
+    clearInterval(state.timer);
+    state.activeQuiz=null;
+    toast('Simulacro guardado. Podés continuarlo cuando quieras ✓');
+  }
+  setTab('history');
 }
 
 function setTab(t){
   if(state.activeQuiz && t!=='runner'){
-    if(!confirm('Tenés un quiz en curso. ¿Salir sin guardar?')) return;
+    if(state.activeQuiz.status==='ongoing'){
+      upsertSavedQuiz(state.activeQuiz);
+      toast('Progreso guardado automáticamente ✓');
+    }
     clearInterval(state.timer); state.activeQuiz=null;
   }
   state.tab=t;
@@ -246,13 +249,22 @@ function render(){
 
 function renderQuizHome(root){
   const extras=state.gemini.preguntasExtra||[];
-  const plans=state.gemini.planGemini||[];
-  const pending=plans.filter(p=>!state.planDone[p.id]).length;
-  let h=`<section class="hero"><div class="eyebrow">iResidencia · Modo Offline + Sync Gemini</div><h1>Tu práctica de residencia siempre lista</h1><p>Estudiá sin internet desde el celular y sincronizá tu progreso con Gemini automáticamente apenas vuelvas a tener señal.</p></section>
-  ${!state.offlineReady?`<div class="card row" style="border:1px solid var(--teal)"><div><strong>⬇ Descargar banco para usar sin internet</strong><p class="muted" style="margin:.2rem 0 0;font-size:.82rem">Guarda las 18.074 preguntas y 5 exámenes en tu dispositivo.</p></div><button class="teal" ${state.downloadingOffline?'disabled':''} onclick="downloadOfflinePack(false)">${state.downloadingOffline?'Descargando…':'Descargar ahora'}</button></div>`:''}
-  <div class="card row"><div><h2 style="margin-bottom:.2rem">Simulacro General</h2><p class="muted" style="margin:0;font-size:.86rem">Combiná las seis categorías (10 a 180 preguntas).</p></div>
+  const simsGem=state.gemini.simulacrosGemini||[];
+  let h=`<section class="hero"><div class="eyebrow">iResidencia · Modo Offline + Sync Gemini</div><h1>Tu práctica de residencia siempre lista</h1><p>Pausá y guardá cualquier simulacro para seguirlo después, sin internet y sincronizado con Gemini.</p></section>
+  ${!state.offlineReady?`<div class="card row" style="border:1px solid var(--teal)"><div><strong>⬇ Descargar banco para usar sin internet</strong><p class="muted" style="margin:.2rem 0 0;font-size:.82rem">Guarda las 18.074 preguntas y 5 exámenes en tu dispositivo.</p></div><button class="teal" ${state.downloadingOffline?'disabled':''} onclick="downloadOfflinePack(false)">${state.downloadingOffline?'Descargando…':'Descargar ahora'}</button></div>`:''}`;
+
+  if(state.savedQuizzes.length){
+    const latest=state.savedQuizzes[0];
+    const ansCnt=Object.keys(latest.answers||{}).length;
+    h+=`<div class="card row" style="border:1px solid var(--amber)"><div><strong>⏸ En curso: ${esc(latest.title)}</strong><p class="muted" style="margin:.2rem 0 0;font-size:.82rem">${ansCnt}/${latest.questions.length} respondidas · ${fmtTime(latest.elapsed||0)} ${state.savedQuizzes.length>1?'(y '+(state.savedQuizzes.length-1)+' guardado(s) más)':''}</p></div><button class="primary" onclick="resumeSavedQuiz('${esc(latest.id)}')">Continuar →</button></div>`;
+  }
+
+  if(simsGem.length){
+    h+=`<div class="card row" style="border:1px solid #4d3f6b"><div><strong>✦ ${simsGem.length} simulacro(s) guardado(s) por Gemini</strong><p class="muted" style="margin:.2rem 0 0;font-size:.82rem">${esc(simsGem[0].titulo)}</p></div><button class="teal" onclick="setTab('gemini')">Abrir →</button></div>`;
+  }
+
+  h+=`<div class="card row"><div><h2 style="margin-bottom:.2rem">Simulacro General</h2><p class="muted" style="margin:0;font-size:.86rem">Combiná las seis categorías (10 a 180 preguntas) y guardalo para hacerlo por partes.</p></div>
   <div class="row"><button class="primary" onclick="openCustomizer()">Personalizar →</button>${extras.length?`<button class="teal" onclick="startExtras()">Preguntas Gemini (${extras.length})</button>`:''}</div></div>
-  ${pending?`<div class="card row" style="border:1px solid #4d3f6b"><div><strong>✦ ${pending} tarea(s) de Gemini pendiente(s)</strong><p class="muted" style="margin:.2rem 0 0;font-size:.82rem">Tocá para ver tus microlecciones y repasos.</p></div><button class="ghost" onclick="setTab('gemini')">Abrir →</button></div>`:''}
   <h2 style="margin:1rem 0 .75rem">Practicá por categoría</h2><div class="grid">`;
   (state.meta.categories||DEFAULT_CATS).forEach(c=>{
     h+=`<div class="card cat-card" onclick="quickCat(${c.id},'${esc(c.name)}')"><div><div class="cat-banner c${c.id}"><span>${CAT_ICONS[c.id]||'📘'}</span><span style="font-size:.9rem">${(c.count||0).toLocaleString('es')}</span></div><h3>${esc(c.name)}</h3><p class="muted" style="font-size:.82rem;margin-bottom:.6rem">${(c.count||0).toLocaleString('es')} preguntas</p></div><div class="cat-foot">Quiz rápido (15) →</div></div>`;
@@ -264,7 +276,7 @@ function renderQuizHome(root){
 function openCustomizer(){
   const box=document.getElementById('customBox');
   const rows=(state.meta.categories||DEFAULT_CATS).map(c=>`<div class="config-row"><div><strong>${esc(c.name)}</strong></div><input type="number" min="0" max="30" value="5" id="cnt_${c.id}"></div>`).join('');
-  box.innerHTML=`<div class="card" style="margin-top:.9rem;border:1px solid var(--purple)"><h2>Simulacro Personalizado</h2>${rows}<div style="margin:.8rem 0"><label class="muted" style="font-size:.82rem">Modo:</label> <select id="qMode"><option value="immediate">Inmediato</option><option value="final">Al finalizar</option></select></div><div class="row"><button class="ghost" onclick="document.getElementById('customBox').innerHTML=''">Cancelar</button><button class="primary" onclick="launchCustom()">Comenzar →</button></div></div>`;
+  box.innerHTML=`<div class="card" style="margin-top:.9rem;border:1px solid var(--purple)"><h2>Simulacro Personalizado</h2>${rows}<div style="margin:.8rem 0"><label class="muted" style="font-size:.82rem">Modo:</label> <select id="qMode"><option value="immediate">Inmediato</option><option value="final">Al finalizar</option></select></div><div class="row"><button class="ghost" onclick="document.getElementById('customBox').innerHTML=''">Cancelar</button><div class="row"><button class="teal" onclick="launchCustom(true)">Guardar para después</button><button class="primary" onclick="launchCustom(false)">Comenzar →</button></div></div></div>`;
   box.scrollIntoView({behavior:'smooth'});
 }
 
@@ -285,7 +297,7 @@ async function quickCat(cid,name){
   }catch(e){ toast(e.message); render(); }
 }
 
-async function launchCustom(){
+async function launchCustom(saveOnly){
   const counts={}; let total=0;
   (state.meta.categories||DEFAULT_CATS).forEach(c=>{const v=Number(document.getElementById('cnt_'+c.id).value)||0;if(v>0){counts[c.id]=v;total+=v;}});
   if(total<1||total>180){toast('Elegí entre 1 y 180 preguntas.');return;}
@@ -298,7 +310,40 @@ async function launchCustom(){
       const pool=await loadCat(cid);
       res=res.concat(shuffle(pool).slice(0,counts[cidStr]).map(q=>({...q,categoryName:catName})));
     }
-    beginQuiz('Simulacro ('+res.length+')',mode,shuffle(res));
+    const qs=shuffle(res);
+    if(saveOnly){
+      const qz={id:'qz_'+Date.now(),title:'Simulacro ('+qs.length+')',mode,questions:qs,index:0,answers:{},checked:{},elapsed:0,status:'ongoing'};
+      upsertSavedQuiz(qz);
+      toast('Simulacro guardado en Historial para hacerlo después ✓');
+      setTab('history');
+    }else{
+      beginQuiz('Simulacro ('+qs.length+')',mode,qs);
+    }
+  }catch(e){ toast(e.message); render(); }
+}
+
+async function startGeminiSimulacro(simId){
+  const sim=(state.gemini.simulacrosGemini||[]).find(s=>s.id===simId);
+  if(!sim){toast('Simulacro no encontrado.');return;}
+  const existing=state.savedQuizzes.find(x=>x.id===sim.id);
+  if(existing){ resumeSavedQuiz(existing.id); return; }
+  document.getElementById('app').innerHTML='<div class="card muted">Cargando '+esc(sim.titulo)+'…</div>';
+  try{
+    let qs=[];
+    if(Array.isArray(sim.questions) && sim.questions.length){
+      qs=sim.questions;
+    }else if(Array.isArray(sim.questionIds) && sim.questionIds.length){
+      const byId={};
+      for(const cid of (sim.categories||[1,2,3,4,5,6])){
+        const catName=(state.meta.categories.find(x=>x.id===cid)||{}).name||sim.categoria||'';
+        const pool=await loadCat(cid);
+        pool.forEach(q=>{ byId[String(q.id)]={...q,categoryName:catName}; });
+      }
+      (state.gemini.preguntasExtra||[]).forEach(q=>{ byId[String(q.id)]=q; });
+      qs=sim.questionIds.map(id=>byId[String(id)]).filter(Boolean);
+    }
+    if(!qs.length) throw new Error('Descargá el banco offline primero para abrir este simulacro.');
+    beginQuiz(sim.titulo, sim.mode||'immediate', qs, sim.id);
   }catch(e){ toast(e.message); render(); }
 }
 
@@ -310,7 +355,7 @@ function startExtras(){
 
 function renderExams(root){
   const exams=state.meta.exams||[];
-  let h='<h2>Simulador de Exámenes</h2><p class="muted">Exámenes completos de residencia (2020–2024).</p>';
+  let h='<h2>Simulador de Exámenes</h2><p class="muted">Exámenes completos de residencia (2020–2024). Se guardan automáticamente si los pausás.</p>';
   if(!exams.length) h+='<div class="card muted">Tocá ↻ con internet para cargar la lista de exámenes.</div>';
   exams.forEach(ex=>{
     h+=`<div class="card row"><div><h3 style="margin-bottom:.2rem">${esc(ex.name)}</h3><span class="muted" style="font-size:.82rem">${ex.count} preguntas · ${ex.year}</span></div><button class="primary" onclick="startExam(${ex.id},'${esc(ex.name)}')">Iniciar →</button></div>`;
@@ -328,12 +373,33 @@ async function startExam(id,name){
   }catch(e){ toast(e.message); render(); }
 }
 
-function beginQuiz(title,mode,questions){
-  state.activeQuiz={title,mode,questions,index:0,answers:{},checked:{},elapsed:0,status:'ongoing'};
+function beginQuiz(title,mode,questions,customId){
+  const qz={id:customId||('qz_'+Date.now()),title,mode,questions,index:0,answers:{},checked:{},elapsed:0,status:'ongoing'};
+  state.activeQuiz=qz;
+  upsertSavedQuiz(qz);
+  startQuizTimer();
   document.getElementById('sectionName').textContent='→ En curso';
-  clearInterval(state.timer);
-  state.timer=setInterval(()=>{if(state.activeQuiz&&state.activeQuiz.status==='ongoing'){state.activeQuiz.elapsed++;const el=document.getElementById('tVal');if(el)el.textContent=fmtTime(state.activeQuiz.elapsed);}},1000);
   render();
+}
+
+function resumeSavedQuiz(id){
+  const found=state.savedQuizzes.find(x=>x.id===id);
+  if(!found){toast('No se encontró el simulacro guardado.');return;}
+  state.activeQuiz=found;
+  startQuizTimer();
+  document.getElementById('sectionName').textContent='→ En curso';
+  render();
+}
+
+function startQuizTimer(){
+  clearInterval(state.timer);
+  state.timer=setInterval(()=>{
+    if(state.activeQuiz && state.activeQuiz.status==='ongoing'){
+      state.activeQuiz.elapsed++;
+      const el=document.getElementById('tVal'); if(el) el.textContent=fmtTime(state.activeQuiz.elapsed);
+      if(state.activeQuiz.elapsed % 10 === 0) upsertSavedQuiz(state.activeQuiz);
+    }
+  },1000);
 }
 
 function renderRunner(root){
@@ -356,7 +422,10 @@ function renderRunner(root){
     const sc=scoreQz(qz);
     sum=`<div class="card" style="text-align:center;border:1px solid var(--teal)"><div class="muted">Resultado guardado</div><div style="font-size:2.8rem;font-weight:800;color:var(--teal)">${sc.pct}%</div><p>${sc.ok} correctas · ${sc.bad} incorrectas · ${sc.un} sin responder · ${fmtTime(qz.elapsed)}</p><button class="primary" onclick="state.activeQuiz=null;setTab('quiz')">Volver al inicio</button></div>`;
   }
-  root.innerHTML=`${sum}<div class="row" style="margin-bottom:.35rem"><strong>${esc(qz.title)}</strong><span class="muted">${qz.index+1}/${qz.questions.length} · <span id="tVal" style="color:var(--teal)">${fmtTime(qz.elapsed)}</span></span></div>
+  root.innerHTML=`${sum}<div class="row" style="margin-bottom:.4rem">
+    <div><strong>${esc(qz.title)}</strong><div class="muted" style="font-size:.8rem">${qz.index+1}/${qz.questions.length} · <span id="tVal" style="color:var(--teal)">${fmtTime(qz.elapsed)}</span></div></div>
+    ${qz.status==='ongoing'?`<button class="ghost" onclick="saveAndExitQuiz()">⏸ Guardar y salir</button>`:''}
+  </div>
   <div class="qnav">${nav}</div>
   <div class="question-box">${esc(q.text)}<div><span class="tag">${esc(q.categoryName||'Residencia')}</span><span class="tag">${esc(q.id)}</span>${q.origin?`<span class="tag">✦ ${esc(q.origin)}</span>`:''}</div></div>
   <div class="answers">${ans}</div>
@@ -370,12 +439,13 @@ function renderRunner(root){
     ${qz.index<qz.questions.length-1?`<button class="primary" onclick="jumpQ(${qz.index+1})">Siguiente →</button>`:(qz.status==='ongoing'?`<button class="teal" onclick="finishQz()">Finalizar ✓</button>`:'')}
   </div></div>`;
 }
-function jumpQ(i){if(!state.activeQuiz||i<0||i>=state.activeQuiz.questions.length)return;state.activeQuiz.index=i;render();}
-function pickAns(qid,oid){const qz=state.activeQuiz;qz.answers[qid]=oid;if(qz.mode==='immediate')qz.checked[qid]=true;render();}
+function jumpQ(i){if(!state.activeQuiz||i<0||i>=state.activeQuiz.questions.length)return;state.activeQuiz.index=i;if(state.activeQuiz.status==='ongoing')upsertSavedQuiz(state.activeQuiz);render();}
+function pickAns(qid,oid){const qz=state.activeQuiz;qz.answers[qid]=oid;if(qz.mode==='immediate')qz.checked[qid]=true;upsertSavedQuiz(qz);render();}
 function scoreQz(qz){let ok=0,bad=0,un=0;qz.questions.forEach(q=>{const a=qz.answers[q.id];if(a==null)un++;else if(q.options.find(o=>o.id===a)?.correct)ok++;else bad++;});return{ok,bad,un,total:qz.questions.length,pct:qz.questions.length?Math.round(ok/qz.questions.length*100):0};}
 function finishQz(){
   const qz=state.activeQuiz; clearInterval(state.timer); qz.status='completed';
   const sc=scoreQz(qz);
+  removeSavedQuiz(qz.id);
   state.history.unshift({id:Date.now(),fecha:new Date().toLocaleString('es'),titulo:qz.title,pct:sc.pct,ok:sc.ok,bad:sc.bad,un:sc.un,elapsed:qz.elapsed});
   saveLocal(true); pushUserSyncToGitHub(false); render();
 }
@@ -383,8 +453,17 @@ function toggleMk(id,f){const m=state.marks[id]||{fav:false,doubt:false,note:''}
 function editNote(id){const m=state.marks[id]||{fav:false,doubt:false,note:''};const t=prompt('Nota para Gemini:',m.note||'');if(t===null)return;m.note=t;state.marks[id]=m;saveLocal(true);pushUserSyncToGitHub(true);render();}
 
 function renderGemini(root){
-  const plans=state.gemini.planGemini||[], ex=state.gemini.preguntasExtra||[];
-  let h=`<div class="row" style="margin-bottom:.8rem"><h2 style="margin:0">✦ Plan de Gemini</h2>${ex.length?`<button class="primary" onclick="startExtras()">Practicar preguntas (${ex.length})</button>`:''}</div>`;
+  const sims=state.gemini.simulacrosGemini||[], plans=state.gemini.planGemini||[], ex=state.gemini.preguntasExtra||[];
+  let h=`<div class="row" style="margin-bottom:.8rem"><h2 style="margin:0">✦ Simulacros y Plan de Gemini</h2>${ex.length?`<button class="teal" onclick="startExtras()">Preguntas extra (${ex.length})</button>`:''}</div>`;
+  if(sims.length){
+    h+='<h3 style="margin-bottom:.5rem">Simulacros guardados para vos</h3>';
+    sims.forEach(s=>{
+      const inProg=state.savedQuizzes.find(x=>x.id===s.id);
+      const cnt=(s.questionIds||s.questions||[]).length;
+      h+=`<div class="card row" style="border:1px solid #4d3f6b"><div><strong>${esc(s.titulo)}</strong><div class="muted" style="font-size:.8rem">${esc(s.categoria||'General')} · ${cnt} preguntas · ${esc(s.fecha||'')}</div></div><button class="primary" onclick="startGeminiSimulacro('${esc(s.id)}')">${inProg?'Continuar →':'Resolver →'}</button></div>`;
+    });
+  }
+  h+='<h3 style="margin:1rem 0 .5rem">Tareas y microlecciones</h3>';
   plans.forEach(p=>{
     const done=!!state.planDone[p.id];
     h+=`<div class="card"><div class="row"><strong>${esc(p.titulo)}</strong><span style="color:${done?'var(--teal)':'var(--amber)'};font-size:.8rem;font-weight:700">${done?'Completado':'Pendiente'}</span></div><div class="muted" style="font-size:.78rem;margin:.25rem 0 .5rem">${esc(p.tipo)} · ${esc(p.categoria)} · ${esc(p.fecha)}</div><p style="line-height:1.45">${esc(p.contenido)}</p><button class="${done?'ghost':'teal'}" onclick="state.planDone['${esc(p.id)}']=!state.planDone['${esc(p.id)}'];saveLocal(true);pushUserSyncToGitHub(true);render()">${done?'Marcar pendiente':'Marcar completado ✓'}</button></div>`;
@@ -393,11 +472,24 @@ function renderGemini(root){
 }
 
 function renderHistory(root){
-  let h='<h2>Historial</h2>';
-  if(!state.history.length){root.innerHTML=h+'<div class="card muted">Todavía no completaste ningún quiz.</div>';return;}
-  state.history.forEach(x=>{
-    h+=`<div class="card"><div class="row"><div><h3 style="margin-bottom:.15rem">${esc(x.titulo)}</h3><div class="muted" style="font-size:.8rem">${esc(x.fecha)}</div></div><strong style="font-size:1.4rem;color:var(--teal)">${x.pct}%</strong></div><div class="bar"><span style="width:${x.pct}%"></span></div><div class="muted" style="font-size:.8rem">${x.ok} correctas · ${x.bad} incorrectas · ${fmtTime(x.elapsed||0)}</div></div>`;
-  });
+  let h='<h2>Simulacros guardados (en curso)</h2>';
+  if(!state.savedQuizzes.length){
+    h+='<div class="card muted">No tenés simulacros pausados. Cualquier simulacro que empieces o guardes aparece acá.</div>';
+  }else{
+    state.savedQuizzes.forEach(q=>{
+      const ansCnt=Object.keys(q.answers||{}).length;
+      const pct=q.questions.length?Math.round(ansCnt/q.questions.length*100):0;
+      h+=`<div class="card" style="border:1px solid #594b34"><div class="row"><div><h3 style="margin-bottom:.15rem">⏸ ${esc(q.title)}</h3><div class="muted" style="font-size:.8rem">${ansCnt}/${q.questions.length} respondidas · ${fmtTime(q.elapsed||0)} · ${esc(q.updatedAt||'')}</div></div><div class="row"><button class="primary" onclick="resumeSavedQuiz('${esc(q.id)}')">Continuar →</button><button class="danger" onclick="if(confirm('¿Eliminar este simulacro guardado?')){removeSavedQuiz('${esc(q.id)}');render();}">✕</button></div></div><div class="bar"><span style="width:${pct}%"></span></div></div>`;
+    });
+  }
+  h+='<h2 style="margin-top:1.2rem">Completados</h2>';
+  if(!state.history.length){
+    h+='<div class="card muted">Todavía no completaste ningún quiz.</div>';
+  }else{
+    state.history.forEach(x=>{
+      h+=`<div class="card"><div class="row"><div><h3 style="margin-bottom:.15rem">${esc(x.titulo)}</h3><div class="muted" style="font-size:.8rem">${esc(x.fecha)}</div></div><strong style="font-size:1.4rem;color:var(--teal)">${x.pct}%</strong></div><div class="bar"><span style="width:${x.pct}%"></span></div><div class="muted" style="font-size:.8rem">${x.ok} correctas · ${x.bad} incorrectas · ${fmtTime(x.elapsed||0)}</div></div>`;
+    });
+  }
   root.innerHTML=h;
 }
 
@@ -421,13 +513,11 @@ function renderSettings(root){
 }
 
 function exportBackup(){
-  const blob=new Blob([JSON.stringify({history:state.history,marks:state.marks,planDone:state.planDone},null,2)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({savedQuizzes:state.savedQuizzes,history:state.history,marks:state.marks,planDone:state.planDone},null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='iresidencia-backup.json';a.click();
 }
 
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js').catch(()=>{});
-}
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
 window.addEventListener('online',()=>{ updateStatusBar(); syncAll(true); });
 window.addEventListener('offline',()=>{ updateStatusBar(); toast('Modo sin internet activado: tu progreso se guarda localmente.'); });
 
