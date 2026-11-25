@@ -52,14 +52,19 @@ main{max-width:1020px;margin:auto;padding:.6rem 1rem 6rem}
 .answer.correct{color:var(--teal);font-weight:700}.answer.correct .letter{background:var(--teal);border-color:var(--teal);color:#fff}
 .answer.wrong{color:var(--red)}.answer.wrong .letter{background:var(--red);border-color:var(--red);color:#181818}
 .explain{background:#1d3533;border-left:4px solid var(--teal);padding:.85rem .95rem;border-radius:.7rem;margin-bottom:.9rem;font-size:.88rem;line-height:1.48}
-.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-bottom:1rem}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1rem}
 .metric{background:var(--panel);border-radius:1rem;padding:.95rem}.metric strong{display:block;font-size:1.45rem;color:var(--teal);margin-top:.15rem}
 .config-row{display:flex;align-items:center;justify-content:space-between;gap:.65rem;padding:.7rem .9rem;background:var(--panel2);border-radius:.9rem;margin-bottom:.5rem}
 .config-row input[type=number]{width:4.6rem;text-align:center}
 .bar{height:.48rem;background:#35353a;border-radius:999px;overflow:hidden;margin:.4rem 0}.bar span{display:block;height:100%;background:var(--teal)}
+.bar span.mid{background:var(--amber)}.bar span.low{background:var(--red)}
+.cat-stat{padding:.75rem .9rem;background:var(--panel2);border-radius:.9rem;margin-bottom:.55rem}
+.cat-stat:last-child{margin-bottom:0}
+.pct-hi{color:var(--teal)}.pct-mid{color:var(--amber)}.pct-lo{color:var(--red)}
+.btn-sm{padding:.42rem .68rem;font-size:.82rem;border-radius:.7rem}
 #toast{position:fixed;bottom:5.2rem;left:50%;transform:translateX(-50%);background:#3a3047;color:#fff;padding:.7rem 1.1rem;border-radius:.8rem;box-shadow:0 8px 24px #0008;z-index:100;display:none;max-width:90vw;font-size:.86rem}
 @media(max-width:740px){.grid{grid-template-columns:repeat(2,1fr)}.stat-grid{grid-template-columns:1fr 1fr}}
-@media(max-width:460px){.grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr}.brand small{display:none}}
+@media(max-width:460px){.grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}.brand small{display:none}}
 </style>
 </head>
 <body>
@@ -90,8 +95,9 @@ main{max-width:1020px;margin:auto;padding:.6rem 1rem 6rem}
 <div id="toast"></div>
 <script>
 const REPO = 'drcarlosperseverance-beep/iResidencia-Gemini';
-const CACHE_NAME = 'iresidencia-offline-v2';
-const CAT_ICONS = {1:'🩺',2:'🧬',3:'🏥',4:'👶',5:'🫀',6:'🤰'};
+const CACHE_NAME = 'iresidencia-offline-v3';
+const IS_APK = /iResidenciaAPK/i.test(navigator.userAgent||'');
+const CAT_ICONS = {0:'📝',1:'🩺',2:'🧬',3:'🏥',4:'👶',5:'🫀',6:'🤰'};
 const DEFAULT_CATS = [
   {id:1,name:'Cirugía General',count:1839},{id:2,name:'Ciencias Básicas',count:5345},
   {id:3,name:'Salud Pública',count:976},{id:4,name:'Pediatría',count:4186},
@@ -105,17 +111,23 @@ const state = {
   history:JSON.parse(localStorage.getItem('ires_hist')||'[]'),
   marks:JSON.parse(localStorage.getItem('ires_marks')||'{}'),
   planDone:JSON.parse(localStorage.getItem('ires_plan_done')||'{}'),
+  deletedHistoryIds:JSON.parse(localStorage.getItem('ires_del_hist')||'[]'),
+  deletedSimIds:JSON.parse(localStorage.getItem('ires_del_sims')||'[]'),
   ghToken:localStorage.getItem('ires_gh_token')||'',
   pendingSync:localStorage.getItem('ires_pending')==='1',
-  offlineReady:localStorage.getItem('ires_offline_ready')==='1',
+  offlineReady:IS_APK || localStorage.getItem('ires_offline_ready')==='1',
   downloadingOffline:false,
-  activeQuiz:null, timer:null, catCache:{}
+  statsComputing:false,
+  syncing:false,
+  activeQuiz:null, timer:null, catCache:{}, examsCache:null
 };
 function saveLocal(markPending){
   localStorage.setItem('ires_saved',JSON.stringify(state.savedQuizzes));
   localStorage.setItem('ires_hist',JSON.stringify(state.history));
   localStorage.setItem('ires_marks',JSON.stringify(state.marks));
   localStorage.setItem('ires_plan_done',JSON.stringify(state.planDone));
+  localStorage.setItem('ires_del_hist',JSON.stringify(state.deletedHistoryIds));
+  localStorage.setItem('ires_del_sims',JSON.stringify(state.deletedSimIds));
   localStorage.setItem('ires_meta',JSON.stringify(state.meta));
   localStorage.setItem('ires_gemini',JSON.stringify(state.gemini));
   if(markPending){ state.pendingSync=true; localStorage.setItem('ires_pending','1'); }
@@ -128,9 +140,41 @@ function upsertSavedQuiz(qz){
   else state.savedQuizzes.unshift(qz);
   saveLocal(true);
 }
-function removeSavedQuiz(id){
-  state.savedQuizzes = state.savedQuizzes.filter(x=>x.id!==id);
+function removeSavedQuiz(id, syncNow){
+  state.savedQuizzes = state.savedQuizzes.filter(x=>String(x.id)!==String(id));
   saveLocal(true);
+  if(syncNow) pushUserSyncToGitHub(true);
+}
+function getVisibleGeminiSims(){
+  const del = new Set((state.deletedSimIds||[]).map(String));
+  return (state.gemini.simulacrosGemini||[]).filter(s=>!del.has(String(s.id)));
+}
+function deleteGeminiSimulacro(simId, title){
+  if(!confirm('¿Eliminar el simulacro "'+(title||simId)+'"?\n(Podés restaurarlo luego desde Ajustes si cambiás de idea.)')) return;
+  const sid = String(simId);
+  if(!state.deletedSimIds.includes(sid)) state.deletedSimIds.push(sid);
+  state.savedQuizzes = state.savedQuizzes.filter(x=>String(x.id)!==sid);
+  saveLocal(true);
+  pushUserSyncToGitHub(true);
+  toast('Simulacro eliminado ✓');
+  render();
+}
+function restoreDeletedSims(){
+  state.deletedSimIds = [];
+  saveLocal(true);
+  pushUserSyncToGitHub(true);
+  toast('Simulacros de Gemini restaurados ✓');
+  render();
+}
+function deleteHistoryItem(histId, title){
+  if(!confirm('¿Eliminar "'+(title||'este simulacro')+'" del historial y de tus estadísticas?')) return;
+  const hid = String(histId);
+  state.history = state.history.filter(x=>String(x.id)!==hid);
+  if(!state.deletedHistoryIds.includes(hid)) state.deletedHistoryIds.push(hid);
+  saveLocal(true);
+  pushUserSyncToGitHub(true);
+  toast('Resultado eliminado ✓');
+  render();
 }
 function applyZoom(){
   document.documentElement.style.setProperty('--ui-scale',state.zoom.toFixed(2));
@@ -147,14 +191,26 @@ function updateStatusBar(){
   const st=document.getElementById('syncStatus');
   const ob=document.getElementById('offlineBadge');
   if(navigator.onLine){
-    st.innerHTML='<span class="badge-ok">● Online</span>'+(state.pendingSync?' · Pendiente de subir':' · Sincronizado');
+    if(state.syncing){
+      st.innerHTML='<span class="badge-ok">● Online</span> · Sincronizando…';
+    }else if(state.pendingSync){
+      st.innerHTML='<span class="badge-ok">● Online</span> · '+(state.ghToken?'Pendiente de subir':'Guardado local (falta token en ⚙)');
+    }else{
+      st.innerHTML='<span class="badge-ok">● Online</span> · Sincronizado';
+    }
   }else{
     st.innerHTML='<span class="badge-off">● Sin internet</span> · Guardado en dispositivo';
   }
-  ob.textContent=state.offlineReady?'✓ Offline listo':'Solo online';
+  ob.textContent=IS_APK?'✓ APK Offline listo':(state.offlineReady?'✓ Offline listo':'Solo online');
 }
 
 async function downloadOfflinePack(silent){
+  if(IS_APK){
+    state.offlineReady=true; localStorage.setItem('ires_offline_ready','1');
+    updateStatusBar();
+    if(!silent) toast('Esta APK ya trae las 18.074 preguntas y 5 exámenes offline ✓');
+    render(); return;
+  }
   if(!('caches' in window)){ if(!silent) toast('Este navegador no soporta caché offline.'); return; }
   if(!navigator.onLine){ if(!silent) toast('Necesitás internet la primera vez para descargar el banco.'); return; }
   state.downloadingOffline=true; render();
@@ -173,22 +229,46 @@ async function downloadOfflinePack(silent){
   state.downloadingOffline=false; updateStatusBar(); render();
 }
 
+async function fetchRemoteUserSync(q){
+  if(state.ghToken){
+    try{
+      const api=`https://api.github.com/repos/${REPO}/contents/docs/data/user_sync.json`;
+      const r=await fetch(api,{headers:{Authorization:'Bearer '+state.ghToken,Accept:'application/vnd.github.raw+json'}});
+      if(r.ok) return await r.json();
+    }catch(_){}
+  }
+  const uRes = await fetch('data/user_sync.json'+q).catch(()=>null);
+  if(uRes && uRes.ok) return await uRes.json();
+  return null;
+}
+
 async function syncAll(showMsg){
   updateStatusBar();
-  if(!navigator.onLine){ if(showMsg) toast('Sin internet: usando datos guardados.'); render(); return; }
+  if(!navigator.onLine){ if(showMsg) toast('Sin internet: usando datos guardados en tu dispositivo.'); render(); return; }
+  if(state.syncing) return;
+  state.syncing=true; updateStatusBar();
   const q='?t='+Date.now();
   try{
     const [mRes,gRes]=await Promise.all([fetch('data/meta.json'+q).catch(()=>null),fetch('data/gemini_sync.json'+q).catch(()=>null)]);
     if(mRes && mRes.ok) state.meta = await mRes.json();
     if(gRes && gRes.ok) state.gemini = await gRes.json();
-    const uRes = await fetch('data/user_sync.json'+q).catch(()=>null);
-    if(uRes && uRes.ok){
-      const remote = await uRes.json();
+    const remote = await fetchRemoteUserSync(q);
+    if(remote){
+      if(Array.isArray(remote.deletedHistoryIds)){
+        state.deletedHistoryIds = Array.from(new Set([...(state.deletedHistoryIds||[]).map(String), ...remote.deletedHistoryIds.map(String)]));
+      }
+      if(Array.isArray(remote.deletedSimIds)){
+        state.deletedSimIds = Array.from(new Set([...(state.deletedSimIds||[]).map(String), ...remote.deletedSimIds.map(String)]));
+      }
+      const delHistSet = new Set(state.deletedHistoryIds.map(String));
       if(Array.isArray(remote.history)){
-        const byId=new Map(state.history.map(x=>[String(x.id),x]));
+        const byId=new Map(state.history.filter(x=>!delHistSet.has(String(x.id))).map(x=>[String(x.id),x]));
         remote.history.forEach(r=>{
-          const cur=byId.get(String(r.id));
-          if(!cur || (r.answers && !cur.answers)) byId.set(String(r.id), r);
+          const rid=String(r.id);
+          if(delHistSet.has(rid)) return;
+          const cur=byId.get(rid);
+          if(!cur || (r.answers && !cur.answers)) byId.set(rid, r);
+          else if(cur && !cur.byCategory && r.byCategory) cur.byCategory = r.byCategory;
         });
         state.history=Array.from(byId.values()).sort((a,b)=>(b.id||0)-(a.id||0));
       }
@@ -197,25 +277,46 @@ async function syncAll(showMsg){
     }
     saveLocal(false);
     if(state.pendingSync && state.ghToken) await pushUserSyncToGitHub(true);
-    if(!state.offlineReady) downloadOfflinePack(true);
-    if(showMsg) toast('Sincronizado con Gemini ✓');
+    if(!state.offlineReady && !IS_APK) downloadOfflinePack(true);
+    if(showMsg) toast(state.pendingSync && !state.ghToken ? 'Actualizado (agregá tu token en ⚙ para subir tu progreso)' : 'Sincronizado ✓');
   }catch(e){}
-  updateStatusBar(); render();
+  state.syncing=false; updateStatusBar(); render();
 }
 
-async function pushUserSyncToGitHub(silent){
-  if(!navigator.onLine){ saveLocal(true); updateStatusBar(); if(!silent) toast('Guardado offline. Se subirá al volver internet.'); return; }
-  if(!state.ghToken){ if(!silent) toast('Guardado en tu dispositivo ✓'); return; }
+async function pushUserSyncToGitHub(silent, retry){
+  if(!navigator.onLine){ saveLocal(true); updateStatusBar(); if(!silent) toast('Guardado sin internet. Se sincronizará al volver la conexión ✓'); return false; }
+  if(!state.ghToken){ updateStatusBar(); if(!silent) toast('Guardado en tu dispositivo ✓ (configurá token en ⚙ para sincronizar con GitHub)'); return false; }
   const api=`https://api.github.com/repos/${REPO}/contents/docs/data/user_sync.json`;
   try{
     let sha=null;
     const cur=await fetch(api,{headers:{Authorization:'Bearer '+state.ghToken}});
+    if(cur.status===401||cur.status===403){
+      if(!silent) toast('Token de GitHub inválido o sin permiso Contents: Write.');
+      return false;
+    }
     if(cur.ok){const j=await cur.json();sha=j.sha;}
-    const payload={updatedAt:new Date().toISOString(),history:state.history.slice(0,100),marks:state.marks,planDone:state.planDone,savedCount:state.savedQuizzes.length};
+    const payload={
+      updatedAt:new Date().toISOString(),
+      history:state.history.slice(0,150),
+      marks:state.marks,
+      planDone:state.planDone,
+      deletedHistoryIds:state.deletedHistoryIds.slice(-300),
+      deletedSimIds:state.deletedSimIds.slice(-100),
+      savedCount:state.savedQuizzes.length
+    };
     const content=btoa(unescape(encodeURIComponent(JSON.stringify(payload,null,2))));
     const res=await fetch(api,{method:'PUT',headers:{Authorization:'Bearer '+state.ghToken,'Content-Type':'application/json'},body:JSON.stringify({message:'Sync progreso usuario',content,sha:sha||undefined})});
-    if(res.ok){ state.pendingSync=false; localStorage.setItem('ires_pending','0'); updateStatusBar(); if(!silent) toast('Sincronizado con GitHub ✓'); }
-  }catch(e){ saveLocal(true); updateStatusBar(); }
+    if(res.status===409 && !retry) return await pushUserSyncToGitHub(silent, true);
+    if(res.ok){
+      state.pendingSync=false; localStorage.setItem('ires_pending','0');
+      updateStatusBar();
+      if(!silent) toast('Sincronizado con GitHub ✓');
+      return true;
+    }
+    saveLocal(true); updateStatusBar();
+    if(!silent) toast('Error al subir a GitHub ('+res.status+'). Quedó guardado local.');
+    return false;
+  }catch(e){ saveLocal(true); updateStatusBar(); return false; }
 }
 
 function saveAndExitQuiz(){
@@ -256,7 +357,7 @@ function render(){
 
 function renderQuizHome(root){
   const extras=state.gemini.preguntasExtra||[];
-  const simsGem=state.gemini.simulacrosGemini||[];
+  const simsGem=getVisibleGeminiSims();
   let h=`<section class="hero"><div class="eyebrow">iResidencia · Modo Offline + Sync Gemini</div><h1>Tu práctica de residencia siempre lista</h1><p>Pausá y guardá cualquier simulacro para seguirlo después, sin internet y sincronizado con Gemini.</p></section>
   ${!state.offlineReady?`<div class="card row" style="border:1px solid var(--teal)"><div><strong>⬇ Descargar banco para usar sin internet</strong><p class="muted" style="margin:.2rem 0 0;font-size:.82rem">Guarda las 18.074 preguntas y 5 exámenes en tu dispositivo.</p></div><button class="teal" ${state.downloadingOffline?'disabled':''} onclick="downloadOfflinePack(false)">${state.downloadingOffline?'Descargando…':'Descargar ahora'}</button></div>`:''}`;
 
@@ -427,7 +528,18 @@ function renderRunner(root){
   let sum='';
   if(qz.status==='completed'){
     const sc=scoreQz(qz);
-    sum=`<div class="card" style="text-align:center;border:1px solid var(--teal)"><div class="muted">Resultado guardado</div><div style="font-size:2.8rem;font-weight:800;color:var(--teal)">${sc.pct}%</div><p>${sc.ok} correctas · ${sc.bad} incorrectas · ${sc.un} sin responder · ${fmtTime(qz.elapsed)}</p><button class="primary" onclick="state.activeQuiz=null;setTab('quiz')">Volver al inicio</button></div>`;
+    const byCat=computeCategoryBreakdown(qz.questions, qz.answers);
+    const catKeys=Object.keys(byCat).map(Number).sort((a,b)=>a-b);
+    let catHtml='';
+    if(catKeys.length>1){
+      catHtml='<div style="text-align:left;margin:.85rem 0">'+catKeys.map(cid=>{
+        const st=byCat[cid], pct=st.total?Math.round(st.ok/st.total*100):0;
+        const cls=pct>=70?'pct-hi':(pct>=50?'pct-mid':'pct-lo');
+        const bCls=pct>=70?'':(pct>=50?'mid':'low');
+        return `<div class="cat-stat"><div class="row"><span>${CAT_ICONS[cid]||'📘'} <strong>${esc(getCatName(cid))}</strong></span><strong class="${cls}">${pct}%</strong></div><div class="bar"><span class="${bCls}" style="width:${pct}%"></span></div><div class="muted" style="font-size:.76rem">${st.ok}/${st.total} correctas · ${st.bad} inc.${st.un?' · '+st.un+' sin resp.':''}</div></div>`;
+      }).join('')+'</div>';
+    }
+    sum=`<div class="card" style="text-align:center;border:1px solid var(--teal)"><div class="muted">Resultado guardado</div><div style="font-size:2.8rem;font-weight:800;color:var(--teal)">${sc.pct}%</div><p>${sc.ok} correctas · ${sc.bad} incorrectas · ${sc.un} sin responder · ${fmtTime(qz.elapsed)}</p>${catHtml}<button class="primary" onclick="state.activeQuiz=null;setTab('quiz')">Volver al inicio</button></div>`;
   }
   root.innerHTML=`${sum}<div class="row" style="margin-bottom:.4rem">
     <div><strong>${esc(qz.title)}</strong><div class="muted" style="font-size:.8rem">${qz.index+1}/${qz.questions.length} · <span id="tVal" style="color:var(--teal)">${fmtTime(qz.elapsed)}</span></div></div>
@@ -446,15 +558,40 @@ function renderRunner(root){
     ${qz.index<qz.questions.length-1?`<button class="primary" onclick="jumpQ(${qz.index+1})">Siguiente →</button>`:(qz.status==='ongoing'?`<button class="teal" onclick="finishQz()">Finalizar ✓</button>`:'')}
   </div></div>`;
 }
+function getCatName(cid){
+  const id=Number(cid);
+  if(id===0) return 'Exámenes de Residencia';
+  return ((state.meta.categories||DEFAULT_CATS).find(x=>Number(x.id)===id)||{}).name||('Materia '+id);
+}
+async function loadExams(){
+  if(state.examsCache) return state.examsCache;
+  const r=await fetch('data/exams.json');
+  if(!r.ok) throw new Error('Sin conexión y exámenes aún no descargados.');
+  const d=await r.json(); state.examsCache=d; return d;
+}
+function computeCategoryBreakdown(questions, answers){
+  const byCat={};
+  (questions||[]).forEach(q=>{
+    const cid=Number(q.category!=null?q.category:0);
+    if(!byCat[cid]) byCat[cid]={ok:0,bad:0,un:0,total:0};
+    byCat[cid].total++;
+    const a=answers?answers[q.id]:null;
+    if(a==null) byCat[cid].un++;
+    else if(q.options && q.options.find(o=>o.id===a)?.correct) byCat[cid].ok++;
+    else byCat[cid].bad++;
+  });
+  return byCat;
+}
 function jumpQ(i){if(!state.activeQuiz||i<0||i>=state.activeQuiz.questions.length)return;state.activeQuiz.index=i;if(state.activeQuiz.status==='ongoing')upsertSavedQuiz(state.activeQuiz);render();}
 function pickAns(qid,oid){const qz=state.activeQuiz;qz.answers[qid]=oid;if(qz.mode==='immediate')qz.checked[qid]=true;upsertSavedQuiz(qz);render();}
 function scoreQz(qz){let ok=0,bad=0,un=0;qz.questions.forEach(q=>{const a=qz.answers[q.id];if(a==null)un++;else if(q.options.find(o=>o.id===a)?.correct)ok++;else bad++;});return{ok,bad,un,total:qz.questions.length,pct:qz.questions.length?Math.round(ok/qz.questions.length*100):0};}
 function finishQz(){
   const qz=state.activeQuiz; clearInterval(state.timer); qz.status='completed';
   const sc=scoreQz(qz);
-  removeSavedQuiz(qz.id);
-  const cats=Array.from(new Set(qz.questions.map(q=>q.category).filter(Boolean)));
-  state.history.unshift({id:Date.now(),simId:qz.id,fecha:new Date().toLocaleString('es'),titulo:qz.title,pct:sc.pct,ok:sc.ok,bad:sc.bad,un:sc.un,elapsed:qz.elapsed,categories:cats.length?cats:[1,2,3,4,5,6],questionIds:qz.questions.map(q=>q.id),answers:{...qz.answers}});
+  const byCat=computeCategoryBreakdown(qz.questions, qz.answers);
+  removeSavedQuiz(qz.id, false);
+  const cats=Array.from(new Set(qz.questions.map(q=>q.category).filter(c=>c!=null && c!==0)));
+  state.history.unshift({id:Date.now(),simId:qz.id,fecha:new Date().toLocaleString('es'),titulo:qz.title,pct:sc.pct,ok:sc.ok,bad:sc.bad,un:sc.un,elapsed:qz.elapsed,categories:cats.length?cats:[1,2,3,4,5,6],byCategory:byCat,questionIds:qz.questions.map(q=>q.id),answers:{...qz.answers}});
   saveLocal(true); pushUserSyncToGitHub(false); render();
 }
 async function openHistoryReview(histId){
@@ -463,8 +600,14 @@ async function openHistoryReview(histId){
   document.getElementById('app').innerHTML='<div class="card muted">Cargando revisión de '+esc(item.titulo)+'…</div>';
   try{
     const byId={};
+    const needsExams=item.questionIds.some(id=>String(id).startsWith('e'));
+    if(needsExams){
+      const exPool=await loadExams();
+      exPool.forEach(q=>{ byId[String(q.id)]={...q,categoryName:q.categoryName||'Examen de Residencia'}; });
+    }
     for(const cid of (item.categories||[1,2,3,4,5,6])){
-      const catName=(state.meta.categories.find(x=>x.id===cid)||{}).name||'';
+      if(Number(cid)===0) continue;
+      const catName=getCatName(cid);
       const pool=await loadCat(cid);
       pool.forEach(q=>{ byId[String(q.id)]={...q,categoryName:catName}; });
     }
@@ -481,7 +624,7 @@ function toggleMk(id,f){const m=state.marks[id]||{fav:false,doubt:false,note:''}
 function editNote(id){const m=state.marks[id]||{fav:false,doubt:false,note:''};const t=prompt('Nota para Gemini:',m.note||'');if(t===null)return;m.note=t;state.marks[id]=m;saveLocal(true);pushUserSyncToGitHub(true);render();}
 
 function renderGemini(root){
-  const sims=state.gemini.simulacrosGemini||[], plans=state.gemini.planGemini||[], ex=state.gemini.preguntasExtra||[];
+  const sims=getVisibleGeminiSims(), plans=state.gemini.planGemini||[], ex=state.gemini.preguntasExtra||[];
   let h=`<div class="row" style="margin-bottom:.8rem"><h2 style="margin:0">✦ Simulacros y Plan de Gemini</h2>${ex.length?`<button class="teal" onclick="startExtras()">Preguntas extra (${ex.length})</button>`:''}</div>`;
   if(sims.length){
     h+='<h3 style="margin-bottom:.5rem">Simulacros guardados para vos</h3>';
@@ -489,8 +632,11 @@ function renderGemini(root){
       const inProg=state.savedQuizzes.find(x=>x.id===s.id);
       const doneItem=state.history.find(x=>x.simId===s.id && x.answers);
       const cnt=(s.questionIds||s.questions||[]).length;
-      h+=`<div class="card row" style="border:1px solid ${doneItem?'var(--teal)':'#4d3f6b'}"><div><strong>${esc(s.titulo)}</strong><div class="muted" style="font-size:.8rem">${esc(s.categoria||'General')} · ${cnt} preguntas · ${esc(s.fecha||'')}${doneItem?` · <span style="color:var(--teal);font-weight:700">✓ Respondido (${doneItem.pct}%)</span>`:''}</div></div><div class="row">${doneItem?`<button class="teal" onclick="openHistoryReview('${doneItem.id}')">Ver revisión →</button>`:''}<button class="${doneItem?'ghost':'primary'}" onclick="startGeminiSimulacro('${esc(s.id)}')">${inProg?'Continuar →':(doneItem?'Repetir':'Resolver →')}</button></div></div>`;
+      const safeTitle=esc(s.titulo).replace(/'/g,"&#39;");
+      h+=`<div class="card row" style="border:1px solid ${doneItem?'var(--teal)':'#4d3f6b'}"><div><strong>${esc(s.titulo)}</strong><div class="muted" style="font-size:.8rem">${esc(s.categoria||'General')} · ${cnt} preguntas · ${esc(s.fecha||'')}${doneItem?` · <span style="color:var(--teal);font-weight:700">✓ Respondido (${doneItem.pct}%)</span>`:''}</div></div><div class="row">${doneItem?`<button class="teal btn-sm" onclick="openHistoryReview('${doneItem.id}')">Ver revisión →</button>`:''}<button class="${doneItem?'ghost':'primary'} btn-sm" onclick="startGeminiSimulacro('${esc(s.id)}')">${inProg?'Continuar →':(doneItem?'Repetir':'Resolver →')}</button><button class="danger btn-sm" title="Eliminar simulacro" onclick="deleteGeminiSimulacro('${esc(s.id)}','${safeTitle}')">✕</button></div></div>`;
     });
+  }else{
+    h+='<div class="card muted">No hay simulacros activos de Gemini.'+(state.deletedSimIds.length?' (Podés restaurar eliminados en Ajustes ⚙)':'')+'</div>';
   }
   h+='<h3 style="margin:1rem 0 .5rem">Tareas y microlecciones</h3>';
   plans.forEach(p=>{
@@ -508,7 +654,7 @@ function renderHistory(root){
     state.savedQuizzes.forEach(q=>{
       const ansCnt=Object.keys(q.answers||{}).length;
       const pct=q.questions.length?Math.round(ansCnt/q.questions.length*100):0;
-      h+=`<div class="card" style="border:1px solid #594b34"><div class="row"><div><h3 style="margin-bottom:.15rem">⏸ ${esc(q.title)}</h3><div class="muted" style="font-size:.8rem">${ansCnt}/${q.questions.length} respondidas · ${fmtTime(q.elapsed||0)} · ${esc(q.updatedAt||'')}</div></div><div class="row"><button class="primary" onclick="resumeSavedQuiz('${esc(q.id)}')">Continuar →</button><button class="danger" onclick="if(confirm('¿Eliminar este simulacro guardado?')){removeSavedQuiz('${esc(q.id)}');render();}">✕</button></div></div><div class="bar"><span style="width:${pct}%"></span></div></div>`;
+      h+=`<div class="card" style="border:1px solid #594b34"><div class="row"><div><h3 style="margin-bottom:.15rem">⏸ ${esc(q.title)}</h3><div class="muted" style="font-size:.8rem">${ansCnt}/${q.questions.length} respondidas · ${fmtTime(q.elapsed||0)} · ${esc(q.updatedAt||'')}</div></div><div class="row"><button class="primary btn-sm" onclick="resumeSavedQuiz('${esc(q.id)}')">Continuar →</button><button class="danger btn-sm" title="Eliminar" onclick="if(confirm('¿Eliminar este simulacro guardado?')){removeSavedQuiz('${esc(q.id)}',true);render();}">✕</button></div></div><div class="bar"><span style="width:${pct}%"></span></div></div>`;
     });
   }
   h+='<h2 style="margin-top:1.2rem">Completados</h2>';
@@ -517,37 +663,144 @@ function renderHistory(root){
   }else{
     state.history.forEach(x=>{
       const canRev=Array.isArray(x.questionIds)&&x.questionIds.length&&x.answers;
-      h+=`<div class="card"><div class="row"><div><h3 style="margin-bottom:.15rem">${esc(x.titulo)}</h3><div class="muted" style="font-size:.8rem">${esc(x.fecha)}</div></div><strong style="font-size:1.4rem;color:var(--teal)">${x.pct}%</strong></div><div class="bar"><span style="width:${x.pct}%"></span></div><div class="row"><div class="muted" style="font-size:.8rem">${x.ok} correctas · ${x.bad} incorrectas · ${fmtTime(x.elapsed||0)}</div>${canRev?`<button class="teal" onclick="openHistoryReview('${x.id}')">Revisar respuestas →</button>`:''}</div></div>`;
+      const safeTitle=esc(x.titulo).replace(/'/g,"&#39;");
+      h+=`<div class="card"><div class="row"><div><h3 style="margin-bottom:.15rem">${esc(x.titulo)}</h3><div class="muted" style="font-size:.8rem">${esc(x.fecha)}</div></div><strong style="font-size:1.4rem;color:var(--teal)">${x.pct}%</strong></div><div class="bar"><span style="width:${x.pct}%"></span></div><div class="row"><div class="muted" style="font-size:.8rem">${x.ok} correctas · ${x.bad} incorrectas · ${fmtTime(x.elapsed||0)}</div><div class="row" style="gap:.4rem">${canRev?`<button class="teal btn-sm" onclick="openHistoryReview('${x.id}')">Revisar →</button>`:''}<button class="danger btn-sm" title="Eliminar del historial" onclick="deleteHistoryItem('${x.id}','${safeTitle}')">✕</button></div></div></div>`;
     });
   }
   root.innerHTML=h;
 }
 
+async function ensureHistoryCategoryStats(){
+  const missing=state.history.filter(x=>!x.byCategory && Array.isArray(x.questionIds) && x.questionIds.length && x.answers);
+  if(!missing.length || state.statsComputing) return;
+  state.statsComputing=true;
+  try{
+    const byId={};
+    const neededCats=new Set();
+    let needsExams=false;
+    missing.forEach(item=>{
+      if(item.questionIds.some(id=>String(id).startsWith('e'))) needsExams=true;
+      (item.categories||[1,2,3,4,5,6]).forEach(c=>{ if(Number(c)>0) neededCats.add(Number(c)); });
+    });
+    if(needsExams){
+      try{
+        const exPool=await loadExams();
+        exPool.forEach(q=>{ byId[String(q.id)]=q; });
+      }catch(_){}
+    }
+    for(const cid of neededCats){
+      try{
+        const pool=await loadCat(cid);
+        pool.forEach(q=>{ byId[String(q.id)]=q; });
+      }catch(_){}
+    }
+    (state.gemini.preguntasExtra||[]).forEach(q=>{ byId[String(q.id)]=q; });
+    let updated=false;
+    missing.forEach(item=>{
+      const qs=item.questionIds.map(id=>byId[String(id)]).filter(Boolean);
+      if(qs.length){
+        item.byCategory=computeCategoryBreakdown(qs, item.answers);
+        updated=true;
+      }
+    });
+    if(updated) saveLocal(false);
+  }finally{
+    state.statsComputing=false;
+    if(state.tab==='stats' && !state.activeQuiz) renderStats(document.getElementById('app'));
+  }
+}
+
 function renderStats(root){
-  const n=state.history.length, avg=n?Math.round(state.history.reduce((a,b)=>a+b.pct,0)/n):0;
+  const n=state.history.length;
+  const totOk=state.history.reduce((a,b)=>a+(b.ok||0),0);
+  const totQ=state.history.reduce((a,b)=>a+(b.ok||0)+(b.bad||0)+(b.un||0),0);
+  const avg=totQ?Math.round(totOk/totQ*100):(n?Math.round(state.history.reduce((a,b)=>a+b.pct,0)/n):0);
   const mks=Object.entries(state.marks);
   const favs=mks.filter(([,v])=>v.fav).length, doubts=mks.filter(([,v])=>v.doubt).length;
-  root.innerHTML=`<h2>Estadísticas</h2><div class="stat-grid"><div class="metric"><span class="muted">Quizzes</span><strong>${n}</strong></div><div class="metric"><span class="muted">Promedio</span><strong>${avg}%</strong></div><div class="metric"><span class="muted">Fav / Dudas</span><strong>${favs}/${doubts}</strong></div></div><div class="card"><h3>Preguntas marcadas</h3>${mks.length?mks.map(([id,v])=>`<div class="config-row"><div><strong>${esc(id)}</strong>${v.note?`<div class="muted" style="font-size:.8rem">✎ ${esc(v.note)}</div>`:''}</div><div>${v.fav?'★ ':''}${v.doubt?'?':''}</div></div>`).join(''):'<p class="muted">Sin marcas todavía.</p>'}</div>`;
+
+  const needCompute=state.history.some(x=>!x.byCategory && Array.isArray(x.questionIds) && x.questionIds.length && x.answers);
+  if(needCompute && !state.statsComputing) ensureHistoryCategoryStats();
+
+  const agg={};
+  (state.meta.categories||DEFAULT_CATS).forEach(c=>{ agg[c.id]={id:c.id,name:c.name,ok:0,bad:0,un:0,total:0}; });
+  state.history.forEach(item=>{
+    if(item.byCategory){
+      Object.entries(item.byCategory).forEach(([cidStr,st])=>{
+        const cid=Number(cidStr);
+        if(!agg[cid]) agg[cid]={id:cid,name:getCatName(cid),ok:0,bad:0,un:0,total:0};
+        agg[cid].ok+=(st.ok||0);
+        agg[cid].bad+=(st.bad||0);
+        agg[cid].un+=(st.un||0);
+        agg[cid].total+=(st.total||0);
+      });
+    }else if(Array.isArray(item.categories) && item.categories.length===1){
+      const cid=Number(item.categories[0]);
+      if(!agg[cid]) agg[cid]={id:cid,name:getCatName(cid),ok:0,bad:0,un:0,total:0};
+      agg[cid].ok+=(item.ok||0);
+      agg[cid].bad+=(item.bad||0);
+      agg[cid].un+=(item.un||0);
+      agg[cid].total+=(item.ok||0)+(item.bad||0)+(item.un||0);
+    }
+  });
+
+  const catList=[1,2,3,4,5,6].map(id=>agg[id]).filter(Boolean);
+  if(agg[0] && agg[0].total>0) catList.push(agg[0]);
+
+  const catRows=catList.map(c=>{
+    const hasData=c.total>0;
+    const pct=hasData?Math.round(c.ok/c.total*100):0;
+    const pctCls=!hasData?'muted':(pct>=70?'pct-hi':(pct>=50?'pct-mid':'pct-lo'));
+    const barCls=pct>=70?'':(pct>=50?'mid':'low');
+    return `<div class="cat-stat">
+      <div class="row"><div><span>${CAT_ICONS[c.id]||'📘'}</span> <strong>${esc(c.name)}</strong></div><strong class="${pctCls}" style="font-size:1.1rem">${hasData?pct+'%':'—'}</strong></div>
+      <div class="bar"><span class="${barCls}" style="width:${hasData?pct:0}%"></span></div>
+      <div class="muted" style="font-size:.78rem">${hasData?`${c.ok} correctas · ${c.bad} incorrectas${c.un?' · '+c.un+' sin resp.':''} (${c.total} preguntas)`:'Sin preguntas respondidas todavía'}</div>
+    </div>`;
+  }).join('');
+
+  root.innerHTML=`<h2>Estadísticas</h2>
+  <div class="stat-grid">
+    <div class="metric"><span class="muted">Simulacros</span><strong>${n}</strong></div>
+    <div class="metric"><span class="muted">Acierto global</span><strong>${avg}%</strong></div>
+    <div class="metric"><span class="muted">Preguntas</span><strong>${totOk}/${totQ}</strong></div>
+    <div class="metric"><span class="muted">Fav / Dudas</span><strong>${favs}/${doubts}</strong></div>
+  </div>
+  <div class="card">
+    <div class="row" style="margin-bottom:.65rem"><h3 style="margin:0">Porcentaje por materia</h3>${state.statsComputing?'<span class="muted" style="font-size:.78rem">Calculando…</span>':''}</div>
+    ${catRows}
+  </div>
+  <div class="card"><h3>Preguntas marcadas</h3>${mks.length?mks.map(([id,v])=>`<div class="config-row"><div><strong>${esc(id)}</strong>${v.note?`<div class="muted" style="font-size:.8rem">✎ ${esc(v.note)}</div>`:''}</div><div>${v.fav?'★ ':''}${v.doubt?'?':''}</div></div>`).join(''):'<p class="muted">Sin marcas todavía.</p>'}</div>`;
 }
 
 function renderSettings(root){
   root.innerHTML=`<h2>Ajustes y Modo Offline</h2>
   <div class="card"><h3>Modo sin internet (Offline)</h3>
-  <p class="muted" style="font-size:.86rem">Estado actual: <strong>${state.offlineReady?'✓ Banco completo descargado en este dispositivo':'Pendiente de descarga'}</strong></p>
-  <button class="teal" ${state.downloadingOffline?'disabled':''} onclick="downloadOfflinePack(false)">${state.downloadingOffline?'Descargando…':'Descargar / actualizar banco offline'}</button></div>
-  <div class="card"><h3>Sincronización automática App → Gemini (GitHub)</h3>
-  <p class="muted" style="font-size:.86rem">Cuando vuelvas a tener internet, tu progreso se sube solo a GitHub si pegás aquí un Personal Access Token (Contents: Read & Write):</p>
+  <p class="muted" style="font-size:.86rem">Estado actual: <strong>${IS_APK?'✓ APK con banco completo integrado (18.074 preguntas + 5 exámenes sin internet)':(state.offlineReady?'✓ Banco completo descargado en este dispositivo':'Pendiente de descarga')}</strong></p>
+  ${!IS_APK?`<button class="teal" ${state.downloadingOffline?'disabled':''} onclick="downloadOfflinePack(false)">${state.downloadingOffline?'Descargando…':'Descargar / actualizar banco offline'}</button>`:''}</div>
+  <div class="card"><h3>Sincronización automática APK ↔ GitHub</h3>
+  <p class="muted" style="font-size:.86rem">Tus resultados y eliminaciones se guardan sin internet en el dispositivo y se sincronizan solos con GitHub apenas vuelve la conexión si pegás aquí tu Personal Access Token (<code>Contents: Read & Write</code>):</p>
   <input id="tkIn" type="password" value="${esc(state.ghToken)}" placeholder="github_pat_..." style="width:100%;margin-bottom:.7rem">
   <div class="row"><button class="primary" onclick="state.ghToken=document.getElementById('tkIn').value.trim();localStorage.setItem('ires_gh_token',state.ghToken);toast('Token guardado');pushUserSyncToGitHub(false)">Guardar y sincronizar</button>
-  <button class="ghost" onclick="exportBackup()">Exportar JSON</button></div></div>`;
+  <button class="teal" onclick="syncAll(true)">Sincronizar ahora ↻</button>
+  <button class="ghost" onclick="exportBackup()">Exportar JSON</button></div></div>
+  ${state.deletedSimIds.length?`<div class="card"><h3>Simulacros de Gemini ocultos</h3><p class="muted" style="font-size:.84rem">Eliminaste ${state.deletedSimIds.length} simulacro(s) de Gemini.</p><button class="ghost" onclick="restoreDeletedSims()">Restaurar todos</button></div>`:''}`;
 }
 
 function exportBackup(){
-  const blob=new Blob([JSON.stringify({savedQuizzes:state.savedQuizzes,history:state.history,marks:state.marks,planDone:state.planDone},null,2)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({savedQuizzes:state.savedQuizzes,history:state.history,marks:state.marks,planDone:state.planDone,deletedHistoryIds:state.deletedHistoryIds,deletedSimIds:state.deletedSimIds},null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='iresidencia-backup.json';a.click();
 }
 
-if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
+window.onAndroidNetworkChange = function(isOnline){
+  updateStatusBar();
+  if(isOnline){
+    syncAll(true);
+  }else{
+    toast('Sin internet: tu progreso se guarda localmente.');
+  }
+};
+
+if('serviceWorker' in navigator && !IS_APK){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
 window.addEventListener('online',()=>{ updateStatusBar(); syncAll(true); });
 window.addEventListener('offline',()=>{ updateStatusBar(); toast('Modo sin internet activado: tu progreso se guarda localmente.'); });
 

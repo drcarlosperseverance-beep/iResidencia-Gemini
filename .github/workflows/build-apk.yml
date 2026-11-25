@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/build-apk.yml'
+      - 'docs/index.html'
   workflow_dispatch:
 
 permissions:
@@ -21,10 +22,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - name: Generate Android WebView project
+      - name: Generate Offline-First Android WebView project
         run: |
           mkdir -p android_app/app/src/main/java/com/iresidencia/gemini
           mkdir -p android_app/app/src/main/res/values
+          mkdir -p android_app/app/src/main/assets/docs
+          cp -r docs/* android_app/app/src/main/assets/docs/
 
           cat << 'EOF' > android_app/settings.gradle
           pluginManagement {
@@ -62,8 +65,8 @@ jobs:
                   applicationId "com.iresidencia.gemini"
                   minSdk 24
                   targetSdk 34
-                  versionCode 1
-                  versionName "1.0.0"
+                  versionCode 2
+                  versionName "1.1.0"
               }
               buildTypes {
                   release { minifyEnabled false }
@@ -88,6 +91,7 @@ jobs:
           cat << 'EOF' > android_app/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
               <application
                   android:label="iResidencia"
                   android:theme="@style/AppTheme"
@@ -109,31 +113,227 @@ jobs:
           package com.iresidencia.gemini;
 
           import android.app.Activity;
+          import android.content.Context;
           import android.graphics.Color;
+          import android.net.ConnectivityManager;
+          import android.net.Network;
+          import android.net.NetworkCapabilities;
+          import android.net.Uri;
           import android.os.Bundle;
           import android.webkit.WebChromeClient;
+          import android.webkit.WebResourceRequest;
+          import android.webkit.WebResourceResponse;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
 
+          import java.io.ByteArrayInputStream;
+          import java.io.ByteArrayOutputStream;
+          import java.io.File;
+          import java.io.FileInputStream;
+          import java.io.FileOutputStream;
+          import java.io.InputStream;
+          import java.net.HttpURLConnection;
+          import java.net.URL;
+          import java.util.HashMap;
+          import java.util.Map;
+
           public class MainActivity extends Activity {
               private WebView webView;
-              private static final String APP_URL = "https://drcarlosperseverance-beep.github.io/iResidencia-Gemini/";
+              private ConnectivityManager connectivityManager;
+              private ConnectivityManager.NetworkCallback networkCallback;
+              private volatile boolean lastOnlineState = false;
+
+              private static final String APP_HOST = "drcarlosperseverance-beep.github.io";
+              private static final String APP_PREFIX = "/iResidencia-Gemini/";
+              private static final String APP_URL = "https://" + APP_HOST + APP_PREFIX;
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
                   webView = new WebView(this);
                   webView.setBackgroundColor(Color.parseColor("#121212"));
+
                   WebSettings s = webView.getSettings();
                   s.setJavaScriptEnabled(true);
                   s.setDomStorageEnabled(true);
                   s.setDatabaseEnabled(true);
                   s.setCacheMode(WebSettings.LOAD_DEFAULT);
-                  webView.setWebViewClient(new WebViewClient());
+                  s.setUserAgentString(s.getUserAgentString() + " iResidenciaAPK/1.1.0");
+
+                  lastOnlineState = isNetworkAvailable();
+                  webView.setNetworkAvailable(lastOnlineState);
+
+                  webView.setWebViewClient(new WebViewClient() {
+                      @Override
+                      public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                          if (!"GET".equalsIgnoreCase(request.getMethod())) {
+                              return null;
+                          }
+                          Uri uri = request.getUrl();
+                          if (uri == null || !APP_HOST.equalsIgnoreCase(uri.getHost())) {
+                              return null;
+                          }
+                          String path = uri.getPath();
+                          if (path == null || !path.startsWith(APP_PREFIX)) {
+                              return null;
+                          }
+                          String rel = path.substring(APP_PREFIX.length());
+                          if (rel.isEmpty() || rel.endsWith("/")) {
+                              rel = rel + "index.html";
+                          }
+                          if (rel.contains("..")) {
+                              return null;
+                          }
+
+                          String mime = guessMime(rel);
+
+                          // Static question banks: serve directly from bundled APK assets for instant 100% offline use
+                          if (rel.matches("data/(cat_\\d+|exams)\\.json")) {
+                              WebResourceResponse assetResp = serveFromAssets(rel, mime);
+                              if (assetResp != null) {
+                                  return assetResp;
+                              }
+                          }
+
+                          // Dynamic files (index.html, meta.json, gemini_sync.json, user_sync.json):
+                          // Try network when online and cache locally; fall back to local cache -> bundled assets when offline.
+                          if (isNetworkAvailable()) {
+                              byte[] fresh = fetchUrlBytes(uri.toString());
+                              if (fresh != null) {
+                                  saveToCache(rel, fresh);
+                                  return buildResponse(mime, fresh);
+                              }
+                          }
+
+                          WebResourceResponse cached = serveFromCache(rel, mime);
+                          if (cached != null) {
+                              return cached;
+                          }
+                          return serveFromAssets(rel, mime);
+                      }
+                  });
                   webView.setWebChromeClient(new WebChromeClient());
                   setContentView(webView);
+                  registerNetworkMonitor();
                   webView.loadUrl(APP_URL);
+              }
+
+              private void registerNetworkMonitor() {
+                  try {
+                      connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                      if (connectivityManager == null) return;
+                      networkCallback = new ConnectivityManager.NetworkCallback() {
+                          @Override
+                          public void onAvailable(Network network) {
+                              notifyNetworkState(true);
+                          }
+
+                          @Override
+                          public void onLost(Network network) {
+                              notifyNetworkState(isNetworkAvailable());
+                          }
+                      };
+                      connectivityManager.registerDefaultNetworkCallback(networkCallback);
+                  } catch (Exception ignored) {}
+              }
+
+              private void notifyNetworkState(final boolean online) {
+                  if (online == lastOnlineState) return;
+                  lastOnlineState = online;
+                  runOnUiThread(() -> {
+                      if (webView != null) {
+                          webView.setNetworkAvailable(online);
+                          webView.evaluateJavascript(
+                              "if(window.onAndroidNetworkChange){window.onAndroidNetworkChange(" + online + ");}",
+                              null
+                          );
+                      }
+                  });
+              }
+
+              private boolean isNetworkAvailable() {
+                  try {
+                      ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                      if (cm == null) return false;
+                      Network active = cm.getActiveNetwork();
+                      if (active == null) return false;
+                      NetworkCapabilities caps = cm.getNetworkCapabilities(active);
+                      return caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+                  } catch (Exception e) {
+                      return false;
+                  }
+              }
+
+              private byte[] fetchUrlBytes(String urlStr) {
+                  HttpURLConnection conn = null;
+                  try {
+                      conn = (HttpURLConnection) new URL(urlStr).openConnection();
+                      conn.setConnectTimeout(4000);
+                      conn.setReadTimeout(6000);
+                      conn.setUseCaches(false);
+                      conn.setRequestProperty("Cache-Control", "no-cache");
+                      if (conn.getResponseCode() != 200) return null;
+                      try (InputStream in = conn.getInputStream();
+                           ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                          byte[] buf = new byte[8192];
+                          int n;
+                          while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                          return out.toByteArray();
+                      }
+                  } catch (Exception e) {
+                      return null;
+                  } finally {
+                      if (conn != null) conn.disconnect();
+                  }
+              }
+
+              private void saveToCache(String rel, byte[] data) {
+                  try {
+                      File outFile = new File(new File(getFilesDir(), "webcache"), rel);
+                      File parent = outFile.getParentFile();
+                      if (parent != null && !parent.exists()) parent.mkdirs();
+                      try (FileOutputStream fos = new FileOutputStream(outFile)) {
+                          fos.write(data);
+                      }
+                  } catch (Exception ignored) {}
+              }
+
+              private WebResourceResponse serveFromCache(String rel, String mime) {
+                  try {
+                      File f = new File(new File(getFilesDir(), "webcache"), rel);
+                      if (!f.exists() || !f.isFile()) return null;
+                      return buildResponse(mime, new FileInputStream(f));
+                  } catch (Exception e) {
+                      return null;
+                  }
+              }
+
+              private WebResourceResponse serveFromAssets(String rel, String mime) {
+                  try {
+                      InputStream is = getAssets().open("docs/" + rel);
+                      return buildResponse(mime, is);
+                  } catch (Exception e) {
+                      return null;
+                  }
+              }
+
+              private WebResourceResponse buildResponse(String mime, byte[] data) {
+                  return buildResponse(mime, new ByteArrayInputStream(data));
+              }
+
+              private WebResourceResponse buildResponse(String mime, InputStream is) {
+                  Map<String, String> headers = new HashMap<>();
+                  headers.put("Cache-Control", "no-store");
+                  return new WebResourceResponse(mime, "UTF-8", 200, "OK", headers, is);
+              }
+
+              private String guessMime(String rel) {
+                  if (rel.endsWith(".html")) return "text/html";
+                  if (rel.endsWith(".json")) return "application/json";
+                  if (rel.endsWith(".js")) return "application/javascript";
+                  if (rel.endsWith(".css")) return "text/css";
+                  return "application/octet-stream";
               }
 
               @Override
@@ -144,6 +344,16 @@ jobs:
                       super.onBackPressed();
                   }
               }
+
+              @Override
+              protected void onDestroy() {
+                  if (connectivityManager != null && networkCallback != null) {
+                      try {
+                          connectivityManager.unregisterNetworkCallback(networkCallback);
+                      } catch (Exception ignored) {}
+                  }
+                  super.onDestroy();
+              }
           }
           EOF
       - name: Build APK
@@ -153,13 +363,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cp android_app/app/build/outputs/apk/debug/app-debug.apk iResidencia-Gemini-v1.0.0.apk
-          if gh release view v1.0.0 --json assets --jq '.assets[].name' > release-assets.txt 2>/dev/null; then
-            if ! grep -Fxq 'iResidencia-Gemini-v1.0.0.apk' release-assets.txt; then
-              gh release upload v1.0.0 iResidencia-Gemini-v1.0.0.apk
-            fi
+          cp android_app/app/build/outputs/apk/debug/app-debug.apk iResidencia-Gemini-v1.1.0.apk
+          if gh release view v1.1.0 >/dev/null 2>&1; then
+            gh release upload v1.1.0 iResidencia-Gemini-v1.1.0.apk --clobber
             exit 0
           fi
-          gh release create v1.0.0 iResidencia-Gemini-v1.0.0.apk \
-            --title "iResidencia Gemini v1.0.0" \
-            --notes "APK de iResidencia conectado en vivo con https://drcarlosperseverance-beep.github.io/iResidencia-Gemini/"
+          gh release create v1.1.0 iResidencia-Gemini-v1.1.0.apk \
+            --title "iResidencia Gemini v1.1.0 (Offline + Stats por materia)" \
+            --notes "APK offline-first con las 18.074 preguntas y 5 exámenes integrados, sincronización automática con GitHub al volver internet, estadísticas por materia y botón para eliminar simulacros."
