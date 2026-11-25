@@ -58,7 +58,8 @@ jobs:
           }
           EOF
 
-          cat << 'EOF' > android_app/app/build.gradle
+          VER_CODE=$((GITHUB_RUN_NUMBER + 10))
+          cat << EOF > android_app/app/build.gradle
           plugins {
               id 'com.android.application'
           }
@@ -69,11 +70,22 @@ jobs:
                   applicationId "com.iresidencia.gemini"
                   minSdk 24
                   targetSdk 34
-                  versionCode 3
-                  versionName "1.2.0"
+                  versionCode ${VER_CODE}
+                  versionName "1.2.1"
+              }
+              signingConfigs {
+                  release {
+                      storeFile file("release.jks")
+                      storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                  }
               }
               buildTypes {
-                  release { minifyEnabled false }
+                  release {
+                      minifyEnabled false
+                      signingConfig signingConfigs.release
+                  }
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -362,18 +374,26 @@ jobs:
               }
           }
           EOF
-      - name: Build APK
+      - name: Build Signed Release APK
         working-directory: android_app
-        run: gradle assembleDebug --no-daemon
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_B64" | base64 -d > app/release.jks
+          gradle assembleRelease --no-daemon
+          rm -f app/release.jks
       - name: Publish APK Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cp android_app/app/build/outputs/apk/debug/app-debug.apk iResidencia-Gemini-v1.2.0.apk
-          if gh release view v1.2.0 >/dev/null 2>&1; then
-            gh release upload v1.2.0 iResidencia-Gemini-v1.2.0.apk --clobber
+          cp android_app/app/build/outputs/apk/release/app-release.apk iResidencia-Gemini-v1.2.1.apk
+          if gh release view v1.2.1 >/dev/null 2>&1; then
+            gh release upload v1.2.1 iResidencia-Gemini-v1.2.1.apk --clobber
             exit 0
           fi
-          gh release create v1.2.0 iResidencia-Gemini-v1.2.0.apk \
-            --title "iResidencia Gemini v1.2.0 (Ícono Oso + Revisión Mejorada)" \
-            --notes "Nuevo ícono de oso estudioso, burbujas centradas sin saltar al 1, gesto swipe izquierda/derecha, filtros (Todas/Falladas/Acertadas), resumen colapsable, limpieza de dudosas y pantalla de inicio más limpia."
+          gh release create v1.2.1 iResidencia-Gemini-v1.2.1.apk \
+            --title "iResidencia Gemini v1.2.1 (Firma fija para actualizaciones)" \
+            --notes "APK firmada con certificado fijo (release) y versionCode autoincremental: de aquí en adelante podrás instalar futuras versiones encima sin desinstalar ni perder datos. Incluye ícono de oso estudioso, revisión fluida con swipe/filtros y modo 100% offline."
