@@ -184,7 +184,14 @@ async function syncAll(showMsg){
     const uRes = await fetch('data/user_sync.json'+q).catch(()=>null);
     if(uRes && uRes.ok){
       const remote = await uRes.json();
-      if(Array.isArray(remote.history) && remote.history.length > state.history.length) state.history = remote.history;
+      if(Array.isArray(remote.history)){
+        const byId=new Map(state.history.map(x=>[String(x.id),x]));
+        remote.history.forEach(r=>{
+          const cur=byId.get(String(r.id));
+          if(!cur || (r.answers && !cur.answers)) byId.set(String(r.id), r);
+        });
+        state.history=Array.from(byId.values()).sort((a,b)=>(b.id||0)-(a.id||0));
+      }
       if(remote.marks) state.marks = Object.assign({}, remote.marks, state.marks);
       if(remote.planDone) state.planDone = Object.assign({}, remote.planDone, state.planDone);
     }
@@ -446,8 +453,29 @@ function finishQz(){
   const qz=state.activeQuiz; clearInterval(state.timer); qz.status='completed';
   const sc=scoreQz(qz);
   removeSavedQuiz(qz.id);
-  state.history.unshift({id:Date.now(),fecha:new Date().toLocaleString('es'),titulo:qz.title,pct:sc.pct,ok:sc.ok,bad:sc.bad,un:sc.un,elapsed:qz.elapsed});
+  const cats=Array.from(new Set(qz.questions.map(q=>q.category).filter(Boolean)));
+  state.history.unshift({id:Date.now(),simId:qz.id,fecha:new Date().toLocaleString('es'),titulo:qz.title,pct:sc.pct,ok:sc.ok,bad:sc.bad,un:sc.un,elapsed:qz.elapsed,categories:cats.length?cats:[1,2,3,4,5,6],questionIds:qz.questions.map(q=>q.id),answers:{...qz.answers}});
   saveLocal(true); pushUserSyncToGitHub(false); render();
+}
+async function openHistoryReview(histId){
+  const item=state.history.find(x=>String(x.id)===String(histId));
+  if(!item || !Array.isArray(item.questionIds) || !item.questionIds.length){toast('Este quiz no tiene respuestas guardadas para revisar.');return;}
+  document.getElementById('app').innerHTML='<div class="card muted">Cargando revisión de '+esc(item.titulo)+'…</div>';
+  try{
+    const byId={};
+    for(const cid of (item.categories||[1,2,3,4,5,6])){
+      const catName=(state.meta.categories.find(x=>x.id===cid)||{}).name||'';
+      const pool=await loadCat(cid);
+      pool.forEach(q=>{ byId[String(q.id)]={...q,categoryName:catName}; });
+    }
+    (state.gemini.preguntasExtra||[]).forEach(q=>{ byId[String(q.id)]=q; });
+    const qs=item.questionIds.map(id=>byId[String(id)]).filter(Boolean);
+    if(!qs.length) throw new Error('Descargá el banco offline primero para revisar este simulacro.');
+    clearInterval(state.timer);
+    state.activeQuiz={id:'rev_'+item.id,title:item.titulo,mode:'final',questions:qs,index:0,answers:item.answers||{},checked:{},elapsed:item.elapsed||0,status:'completed'};
+    document.getElementById('sectionName').textContent='→ Revisión';
+    render();
+  }catch(e){ toast(e.message); render(); }
 }
 function toggleMk(id,f){const m=state.marks[id]||{fav:false,doubt:false,note:''};m[f]=!m[f];state.marks[id]=m;saveLocal(true);pushUserSyncToGitHub(true);render();}
 function editNote(id){const m=state.marks[id]||{fav:false,doubt:false,note:''};const t=prompt('Nota para Gemini:',m.note||'');if(t===null)return;m.note=t;state.marks[id]=m;saveLocal(true);pushUserSyncToGitHub(true);render();}
@@ -459,8 +487,9 @@ function renderGemini(root){
     h+='<h3 style="margin-bottom:.5rem">Simulacros guardados para vos</h3>';
     sims.forEach(s=>{
       const inProg=state.savedQuizzes.find(x=>x.id===s.id);
+      const doneItem=state.history.find(x=>x.simId===s.id && x.answers);
       const cnt=(s.questionIds||s.questions||[]).length;
-      h+=`<div class="card row" style="border:1px solid #4d3f6b"><div><strong>${esc(s.titulo)}</strong><div class="muted" style="font-size:.8rem">${esc(s.categoria||'General')} · ${cnt} preguntas · ${esc(s.fecha||'')}</div></div><button class="primary" onclick="startGeminiSimulacro('${esc(s.id)}')">${inProg?'Continuar →':'Resolver →'}</button></div>`;
+      h+=`<div class="card row" style="border:1px solid ${doneItem?'var(--teal)':'#4d3f6b'}"><div><strong>${esc(s.titulo)}</strong><div class="muted" style="font-size:.8rem">${esc(s.categoria||'General')} · ${cnt} preguntas · ${esc(s.fecha||'')}${doneItem?` · <span style="color:var(--teal);font-weight:700">✓ Respondido (${doneItem.pct}%)</span>`:''}</div></div><div class="row">${doneItem?`<button class="teal" onclick="openHistoryReview('${doneItem.id}')">Ver revisión →</button>`:''}<button class="${doneItem?'ghost':'primary'}" onclick="startGeminiSimulacro('${esc(s.id)}')">${inProg?'Continuar →':(doneItem?'Repetir':'Resolver →')}</button></div></div>`;
     });
   }
   h+='<h3 style="margin:1rem 0 .5rem">Tareas y microlecciones</h3>';
@@ -487,7 +516,8 @@ function renderHistory(root){
     h+='<div class="card muted">Todavía no completaste ningún quiz.</div>';
   }else{
     state.history.forEach(x=>{
-      h+=`<div class="card"><div class="row"><div><h3 style="margin-bottom:.15rem">${esc(x.titulo)}</h3><div class="muted" style="font-size:.8rem">${esc(x.fecha)}</div></div><strong style="font-size:1.4rem;color:var(--teal)">${x.pct}%</strong></div><div class="bar"><span style="width:${x.pct}%"></span></div><div class="muted" style="font-size:.8rem">${x.ok} correctas · ${x.bad} incorrectas · ${fmtTime(x.elapsed||0)}</div></div>`;
+      const canRev=Array.isArray(x.questionIds)&&x.questionIds.length&&x.answers;
+      h+=`<div class="card"><div class="row"><div><h3 style="margin-bottom:.15rem">${esc(x.titulo)}</h3><div class="muted" style="font-size:.8rem">${esc(x.fecha)}</div></div><strong style="font-size:1.4rem;color:var(--teal)">${x.pct}%</strong></div><div class="bar"><span style="width:${x.pct}%"></span></div><div class="row"><div class="muted" style="font-size:.8rem">${x.ok} correctas · ${x.bad} incorrectas · ${fmtTime(x.elapsed||0)}</div>${canRev?`<button class="teal" onclick="openHistoryReview('${x.id}')">Revisar respuestas →</button>`:''}</div></div>`;
     });
   }
   root.innerHTML=h;
