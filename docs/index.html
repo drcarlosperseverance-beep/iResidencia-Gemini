@@ -409,7 +409,6 @@ function render(){
 }
 
 function renderQuizHome(root){
-  const extras=state.gemini.preguntasExtra||[];
   let h=`<section class="hero"><div class="eyebrow">iResidencia · Modo Offline + Sync Gemini</div><h1>Tu práctica de residencia siempre lista</h1><p>Pausá y guardá cualquier simulacro para seguirlo después, sin internet y sincronizado con Gemini.</p></section>
   ${!state.offlineReady?`<div class="card row" style="border:1px solid var(--teal)"><div><strong>⬇ Descargar banco para usar sin internet</strong><p class="muted" style="margin:.2rem 0 0;font-size:.82rem">Guarda las 18.074 preguntas y 5 exámenes en tu dispositivo.</p></div><button class="teal" ${state.downloadingOffline?'disabled':''} onclick="downloadOfflinePack(false)">${state.downloadingOffline?'Descargando…':'Descargar ahora'}</button></div>`:''}`;
 
@@ -420,7 +419,7 @@ function renderQuizHome(root){
   }
 
   h+=`<div class="card row"><div><h2 style="margin-bottom:.2rem">Simulacro General</h2><p class="muted" style="margin:0;font-size:.86rem">Combiná las seis categorías (10 a 180 preguntas) y guardalo para hacerlo por partes.</p></div>
-  <div class="row"><button class="primary" onclick="openCustomizer()">Personalizar →</button>${extras.length?`<button class="teal" onclick="startExtras()">Preguntas Gemini (${extras.length})</button>`:''}</div></div>
+  <div class="row"><button class="primary" onclick="openCustomizer()">Personalizar →</button></div></div>
   <h2 style="margin:1rem 0 .75rem">Practicá por categoría</h2><div class="grid">`;
   (state.meta.categories||DEFAULT_CATS).forEach(c=>{
     h+=`<div class="card cat-card" onclick="quickCat(${c.id},'${esc(c.name)}')"><div><div class="cat-banner c${c.id}"><span>${CAT_ICONS[c.id]||'📘'}</span><span style="font-size:.9rem">${(c.count||0).toLocaleString('es')}</span></div><h3>${esc(c.name)}</h3><p class="muted" style="font-size:.82rem;margin-bottom:.6rem">${(c.count||0).toLocaleString('es')} preguntas</p></div><div class="cat-foot">Quiz rápido (15) →</div></div>`;
