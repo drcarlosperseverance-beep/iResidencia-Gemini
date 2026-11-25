@@ -1,0 +1,482 @@
+{
+  "updatedAt": "2026-11-24T19:58:00-08:00",
+  "history": [
+    {
+      "id": 1795578600000,
+      "simId": "sim_general_20261123_100",
+      "fecha": "24/11/2026, 19:50",
+      "titulo": "Simulacro General Residencia (100 preguntas · Word)",
+      "pct": 50,
+      "ok": 50,
+      "bad": 50,
+      "un": 0,
+      "elapsed": 0,
+      "categories": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "questionIds": [
+        "q9287",
+        "q1496",
+        "q10505",
+        "q17550",
+        "q8271",
+        "q17110",
+        "q16626",
+        "q508",
+        "q14692",
+        "q8092",
+        "q11852",
+        "q8862",
+        "q16381",
+        "q1081",
+        "q10947",
+        "q7918",
+        "q14405",
+        "q7996",
+        "q16233",
+        "q53",
+        "q65",
+        "q15029",
+        "q1163",
+        "q12010",
+        "q8388",
+        "q9066",
+        "q17536",
+        "q17",
+        "q11434",
+        "q462",
+        "q9505",
+        "q8153",
+        "q9453",
+        "q850",
+        "q3660",
+        "q13959",
+        "q672",
+        "q7501",
+        "q14940",
+        "q7877",
+        "q10887",
+        "q3959",
+        "q16039",
+        "q1399",
+        "q13855",
+        "q10017",
+        "q17020",
+        "q16732",
+        "q13255",
+        "q12917",
+        "q14215",
+        "q5163",
+        "q16410",
+        "q14205",
+        "q3426",
+        "q8712",
+        "q3185",
+        "q12414",
+        "q8157",
+        "q14784",
+        "q41",
+        "q14249",
+        "q1956",
+        "q8863",
+        "q15222",
+        "q724",
+        "q5102",
+        "q9581",
+        "q17575",
+        "q17480",
+        "q9028",
+        "q1333",
+        "q13722",
+        "q240",
+        "q14246",
+        "q7424",
+        "q17301",
+        "q557",
+        "q8024",
+        "q1660",
+        "q14726",
+        "q13628",
+        "q12777",
+        "q15123",
+        "q16896",
+        "q15993",
+        "q4601",
+        "q1629",
+        "q7924",
+        "q16162",
+        "q4164",
+        "q9958",
+        "q14388",
+        "q645",
+        "q15845",
+        "q4202",
+        "q1278",
+        "q10829",
+        "q12498",
+        "q14463"
+      ],
+      "answers": {
+        "q9287": 46433,
+        "q1496": 7478,
+        "q10505": 52528,
+        "q17550": 87753,
+        "q8271": 41355,
+        "q17110": 85552,
+        "q16626": 83135,
+        "q508": 2538,
+        "q14692": 73463,
+        "q8092": 40460,
+        "q11852": 59262,
+        "q8862": 44309,
+        "q16381": 81910,
+        "q1081": 5403,
+        "q10947": 54735,
+        "q7918": 39591,
+        "q14405": 72027,
+        "q7996": 39982,
+        "q16233": 81170,
+        "q53": 263,
+        "q65": 324,
+        "q15029": 75148,
+        "q1163": 5815,
+        "q12010": 60052,
+        "q8388": 41939,
+        "q9066": 45329,
+        "q17536": 87683,
+        "q17": 84,
+        "q11434": 57171,
+        "q462": 2307,
+        "q9505": 47526,
+        "q8153": 40764,
+        "q9453": 47263,
+        "q850": 4249,
+        "q3660": 18298,
+        "q13959": 69799,
+        "q672": 3360,
+        "q7501": 37503,
+        "q14940": 74704,
+        "q7877": 39385,
+        "q10887": 54437,
+        "q3959": 19795,
+        "q16039": 80198,
+        "q1399": 6994,
+        "q13855": 69278,
+        "q10017": 50085,
+        "q17020": 85104,
+        "q16732": 83661,
+        "q13255": 66275,
+        "q12917": 64586,
+        "q14215": 71077,
+        "q5163": 25815,
+        "q16410": 82053,
+        "q14205": 71026,
+        "q3426": 17128,
+        "q8712": 43561,
+        "q3185": 15925,
+        "q12414": 62071,
+        "q8157": 40783,
+        "q14784": 73923,
+        "q41": 202,
+        "q14249": 71248,
+        "q1956": 9776,
+        "q8863": 44316,
+        "q15222": 76115,
+        "q724": 3619,
+        "q5102": 25510,
+        "q9581": 47904,
+        "q17575": 87879,
+        "q17480": 87405,
+        "q9028": 45140,
+        "q1333": 6662,
+        "q13722": 68613,
+        "q240": 1196,
+        "q14246": 71234,
+        "q7424": 37120,
+        "q17301": 86509,
+        "q557": 2785,
+        "q8024": 40120,
+        "q1660": 8296,
+        "q14726": 73633,
+        "q13628": 68143,
+        "q12777": 63888,
+        "q15123": 75618,
+        "q16896": 84484,
+        "q15993": 79968,
+        "q4601": 23004,
+        "q1629": 8143,
+        "q7924": 39621,
+        "q16162": 80814,
+        "q4164": 20817,
+        "q9958": 49790,
+        "q14388": 71945,
+        "q645": 3224,
+        "q15845": 79229,
+        "q4202": 21009,
+        "q1278": 6389,
+        "q10829": 54149,
+        "q12498": 62491,
+        "q14463": 72317
+      }
+    }
+  ],
+  "marks": {
+    "q10505": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q17550": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q8271": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q16626": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q14692": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q8092": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q8862": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q16381": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q1081": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q10947": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q14405": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q7996": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q65": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q15029": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q1163": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q9066": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q17": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q11434": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q9453": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q3660": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q672": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q7501": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q7877": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q13855": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q17020": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q16732": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q12917": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q5163": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q16410": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q8712": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q12414": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q14784": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q41": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q14249": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q15222": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q724": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q9581": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q1333": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q13722": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q240": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q14246": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q8024": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q14726": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q13628": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q12777": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q15123": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q14388": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q15845": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q10829": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    },
+    "q14463": {
+      "fav": false,
+      "doubt": true,
+      "note": "Fallada en Simulacro General 100 (Word)"
+    }
+  },
+  "planDone": {},
+  "savedCount": 0
+}
