@@ -1,4 +1,4 @@
-const CACHE_NAME = 'iresidencia-offline-v3';
+const CACHE_NAME = 'iresidencia-offline-v4';
 const CORE_FILES = [
   './',
   './index.html',
